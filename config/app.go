@@ -19,6 +19,14 @@ func init() {
 		// any other location as required by the application or its packages.
 		"name": config.Env("APP_NAME", "Goravel"),
 
+		// Application Frontend URL
+		//
+		// This value is the base URL of your frontend application. It is used
+		// to generate absolute links in password reset (and similar) emails.
+		// Loaded from the FRONTEND_URL env variable, falling back to the
+		// default local Vite dev server when unset.
+		"frontend_url": config.Env("FRONTEND_URL", "http://localhost:5173"),
+
 		// Application Environment
 		//
 		// This value determines the "environment" your application is currently

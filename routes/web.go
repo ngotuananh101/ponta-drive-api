@@ -18,6 +18,7 @@ func Web() {
 	})
 
 	facades.Route().Static("public", "./public")
+	facades.Route().Static("favicon.ico", "./public/favicon.ico")
 
 	userController := controllers.NewUserController()
 	authController := controllers.NewAuthController()
@@ -34,6 +35,8 @@ func Web() {
 
 		router.Prefix("auth").Group(func(authRouter route.Router) {
 			authRouter.Post("/login", authController.Login)
+			authRouter.Post("/forgot-password", authController.ForgotPassword)
+			authRouter.Post("/reset-password", authController.ResetPassword)
 
 			authRouter.Middleware(jwtAuth).Group(func(protected route.Router) {
 				protected.Get("/me", authController.Me)
