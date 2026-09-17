@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ .Subject }}</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #f4f6f9;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      color: #1e293b;
+      -webkit-font-smoothing: antialiased;
+    }
+    .wrapper {
+      width: 100%;
+      background-color: #f4f6f9;
+      padding: 40px 0;
+    }
+    .container {
+      max-width: 580px;
+      margin: 0 auto;
+      background: #ffffff;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+      border: 1px solid #e2e8f0;
+    }
+    .header {
+      padding: 32px 32px 24px;
+      text-align: center;
+      background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .brand-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 48px;
+      height: 48px;
+      background-color: #e0f2fe;
+      border-radius: 12px;
+      margin-bottom: 12px;
+    }
+    .brand-title {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 700;
+      color: #0284c7;
+      letter-spacing: -0.5px;
+    }
+    .content-body {
+      padding: 32px;
+      font-size: 15px;
+      line-height: 1.6;
+      color: #334155;
+    }
+    .footer {
+      padding: 24px 32px;
+      background-color: #f8fafc;
+      border-top: 1px solid #e2e8f0;
+      text-align: center;
+      font-size: 13px;
+      color: #64748b;
+      line-height: 1.5;
+    }
+    .btn-primary {
+      display: inline-block;
+      padding: 12px 28px;
+      background-color: #0284c7;
+      color: #ffffff !important;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 15px;
+      border-radius: 8px;
+      margin: 20px 0;
+      text-align: center;
+    }
+    .warning-box {
+      margin-top: 24px;
+      padding: 14px 16px;
+      background-color: #fef2f2;
+      border-left: 4px solid #ef4444;
+      border-radius: 6px;
+      font-size: 13px;
+      color: #991b1b;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="container">
+      <!-- Header -->
+      <div class="header">
+        <div class="brand-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>
+          </svg>
+        </div>
+        <h1 class="brand-title">Ponta Drive</h1>
+      </div>
+
+      <!-- Main Slot Content -->
+      <div class="content-body">
+        {{ template "content" . }}
+      </div>
+
+      <!-- Footer -->
+      <div class="footer">
+        <p style="margin: 0 0 6px;">Email này được gửi tự động từ hệ thống lưu trữ Ponta Drive.</p>
+        <p style="margin: 0;">&copy; {{ .Year }} Ponta Drive. Mọi quyền được bảo lưu.</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
