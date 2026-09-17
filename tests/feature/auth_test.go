@@ -104,6 +104,9 @@ func (s *AuthTestSuite) TestLoginValidation() {
 	resp, err = s.Http(s.T()).Post("/api/auth/login", bytes.NewBuffer(invalidEmailPayload))
 	s.Require().NoError(err)
 	resp.AssertStatus(422)
+	invalidJson, err := resp.Json()
+	s.Require().NoError(err)
+	s.Contains(invalidJson["message"].(string), "địa chỉ email hợp lệ")
 
 	// 4. Valid email and password -> 200
 	validPayload, _ := json.Marshal(map[string]string{

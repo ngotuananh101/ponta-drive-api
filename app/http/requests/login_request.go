@@ -28,18 +28,11 @@ func (r *LoginRequest) Rules(ctx http.Context) map[string]any {
 }
 
 func (r *LoginRequest) Messages(ctx http.Context) map[string]string {
-	return map[string]string{
-		"email.required":    "Email không được để trống",
-		"email.email":       "Email không đúng định dạng",
-		"password.required": "Mật khẩu không được để trống",
-	}
+	return map[string]string{}
 }
 
 func (r *LoginRequest) Attributes(ctx http.Context) map[string]string {
-	return map[string]string{
-		"email":    "địa chỉ email",
-		"password": "mật khẩu",
-	}
+	return map[string]string{}
 }
 
 func (r *LoginRequest) PrepareForValidation(ctx http.Context, data validation.Data) error {
