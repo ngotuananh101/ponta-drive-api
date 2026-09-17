@@ -176,6 +176,8 @@
 
   "attributes": {
     "email": "email",
-    "password": "mật khẩu"
+    "password": "mật khẩu",
+    "password_confirmation": "xác nhận mật khẩu",
+    "token": "mã xác thực"
   }
 }
