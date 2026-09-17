@@ -205,20 +205,24 @@ func (c *AuthController) ForgotPassword(ctx http.Context) http.Response {
 	frontendUrl := facades.Config().GetString("app.frontend_url", "http://localhost:5173")
 	resetUrl := fmt.Sprintf("%s/reset-password?token=%s&email=%s", frontendUrl, rawToken, url.QueryEscape(req.Email))
 
-	_ = facades.Mail().To([]string{user.Email}).
-		Subject("Đặt lại mật khẩu - Ponta Drive").
-		Content(mail.Content{
-			HtmlView: "reset_password.html",
-			With: map[string]any{
-				"Subject":       "Đặt lại mật khẩu - Ponta Drive",
-				"Name":          user.Name,
-				"Email":         user.Email,
-				"ResetUrl":      resetUrl,
-				"ExpireMinutes": 60,
-				"Year":          time.Now().Year(),
-			},
-		}).
-		Send()
+	// Send the reset email asynchronously so the request is not blocked (and
+	// potential 408 request timeouts) by a slow external SMTP relay.
+	go func() {
+		_ = facades.Mail().To([]string{user.Email}).
+			Subject("Đặt lại mật khẩu - Ponta Drive").
+			Content(mail.Content{
+				HtmlView: "reset_password.html",
+				With: map[string]any{
+					"Subject":       "Đặt lại mật khẩu - Ponta Drive",
+					"Name":          user.Name,
+					"Email":         user.Email,
+					"ResetUrl":      resetUrl,
+					"ExpireMinutes": 60,
+					"Year":          time.Now().Year(),
+				},
+			}).
+			Send()
+	}()
 
 	return ctx.Response().Success().Json(http.Json{
 		"status":  "success",
@@ -251,7 +255,10 @@ func (c *AuthController) ResetPassword(ctx http.Context) http.Response {
 	err = facades.Orm().Query().
 		Where("email = ? AND token = ?", req.Email, hashedToken).
 		First(&resetRecord)
-	if err != nil {
+	// Goravel's Query().First() swallows gorm.ErrRecordNotFound and returns a
+	// nil error, so an empty record must be checked explicitly (mirrors the
+	// `user.ID == 0` guard used in Login).
+	if err != nil || resetRecord.Token == "" {
 		return ctx.Response().Json(http.StatusBadRequest, http.Json{
 			"status":  "error",
 			"message": "Mã khôi phục không hợp lệ hoặc đã hết hạn.",
