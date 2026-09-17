@@ -18,7 +18,7 @@ func Web() {
 	})
 
 	facades.Route().Static("public", "./public")
-	facades.Route().Static("favicon.ico", "./public/favicon.ico")
+	facades.Route().StaticFile("favicon.ico", "./public/favicon.ico")
 
 	userController := controllers.NewUserController()
 	authController := controllers.NewAuthController()
