@@ -26,7 +26,7 @@ func (r *ResetPasswordRequest) Rules(ctx http.Context) map[string]any {
 	return map[string]any{
 		"token":                 "required",
 		"email":                 "required|email",
-		"password":              "required|min_len:6",
+		"password":              "required|min_len:8",
 		"password_confirmation": "required|eq_field:password",
 	}
 }
