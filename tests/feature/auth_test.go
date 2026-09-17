@@ -44,9 +44,9 @@ func (s *AuthTestSuite) TearDownTest() {
 }
 
 func (s *AuthTestSuite) TestLoginAndMe() {
-	// 1. Login with username
+	// 1. Login with email
 	loginPayload, _ := json.Marshal(map[string]string{
-		"login":    s.user.Username,
+		"email":    s.user.Email,
 		"password": "secret123",
 	})
 
@@ -76,9 +76,48 @@ func (s *AuthTestSuite) TestLoginAndMe() {
 	s.Equal(s.user.UUID, userData["uuid"])
 }
 
+func (s *AuthTestSuite) TestLoginValidation() {
+	// 1. Empty payload -> 422
+	emptyPayload, _ := json.Marshal(map[string]string{})
+	resp, err := s.Http(s.T()).Post("/api/auth/login", bytes.NewBuffer(emptyPayload))
+	s.Require().NoError(err)
+	resp.AssertStatus(422)
+
+	jsonBody, err := resp.Json()
+	s.Require().NoError(err)
+	s.Equal("error", jsonBody["status"])
+	s.NotEmpty(jsonBody["message"])
+
+	// 2. Missing password -> 422
+	missingPwdPayload, _ := json.Marshal(map[string]string{
+		"email": s.user.Email,
+	})
+	resp, err = s.Http(s.T()).Post("/api/auth/login", bytes.NewBuffer(missingPwdPayload))
+	s.Require().NoError(err)
+	resp.AssertStatus(422)
+
+	// 3. Invalid email format -> 422
+	invalidEmailPayload, _ := json.Marshal(map[string]string{
+		"email":    "not-an-email",
+		"password": "secret123",
+	})
+	resp, err = s.Http(s.T()).Post("/api/auth/login", bytes.NewBuffer(invalidEmailPayload))
+	s.Require().NoError(err)
+	resp.AssertStatus(422)
+
+	// 4. Valid email and password -> 200
+	validPayload, _ := json.Marshal(map[string]string{
+		"email":    s.user.Email,
+		"password": "secret123",
+	})
+	resp, err = s.Http(s.T()).Post("/api/auth/login", bytes.NewBuffer(validPayload))
+	s.Require().NoError(err)
+	resp.AssertOk()
+}
+
 func (s *AuthTestSuite) TestLoginInvalidPassword() {
 	payload, _ := json.Marshal(map[string]string{
-		"login":    s.user.Username,
+		"email":    s.user.Email,
 		"password": "wrongpassword",
 	})
 
@@ -96,7 +135,7 @@ func (s *AuthTestSuite) TestUnauthenticatedMe() {
 func (s *AuthTestSuite) TestRefreshAndLogout() {
 	// 1. Login
 	loginPayload, _ := json.Marshal(map[string]string{
-		"login":    s.user.Username,
+		"email":    s.user.Email,
 		"password": "secret123",
 	})
 	resp, err := s.Http(s.T()).Post("/api/auth/login", bytes.NewBuffer(loginPayload))

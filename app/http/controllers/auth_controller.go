@@ -1,11 +1,10 @@
 package controllers
 
 import (
-	"strings"
-
 	"github.com/goravel/framework/contracts/http"
 
 	"ponta_drive/app/facades"
+	"ponta_drive/app/http/requests"
 	"ponta_drive/app/models"
 )
 
@@ -16,34 +15,37 @@ func NewAuthController() *AuthController {
 }
 
 func (c *AuthController) Login(ctx http.Context) http.Response {
-	login := strings.TrimSpace(ctx.Request().Input("login"))
-	if login == "" {
-		login = strings.TrimSpace(ctx.Request().Input("username"))
+	var loginRequest requests.LoginRequest
+	errors, err := ctx.Request().ValidateRequest(&loginRequest)
+	if err != nil {
+		return ctx.Response().Json(http.StatusBadRequest, http.Json{
+			"status":  "error",
+			"message": err.Error(),
+		})
 	}
-	password := ctx.Request().Input("password")
-
-	if login == "" || password == "" {
+	if errors != nil {
 		return ctx.Response().Json(http.StatusUnprocessableEntity, http.Json{
 			"status":  "error",
-			"message": "Username/email and password are required",
+			"message": errors.One(),
+			"errors":  errors.All(),
 		})
 	}
 
 	var user models.User
-	err := facades.Orm().Query().
-		Where("username = ? OR email = ?", login, login).
+	err = facades.Orm().Query().
+		Where("email = ?", loginRequest.Email).
 		First(&user)
 	if err != nil || user.ID == 0 {
 		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
 			"status":  "error",
-			"message": "Invalid username or password",
+			"message": "Invalid email or password",
 		})
 	}
 
-	if !facades.Hash().Check(password, user.Password) {
+	if !facades.Hash().Check(loginRequest.Password, user.Password) {
 		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
 			"status":  "error",
-			"message": "Invalid username or password",
+			"message": "Invalid email or password",
 		})
 	}
 
