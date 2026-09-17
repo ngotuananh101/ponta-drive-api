@@ -7,6 +7,7 @@ import (
 
 	"ponta_drive/app/facades"
 	"ponta_drive/app/http/controllers"
+	"ponta_drive/app/http/middleware"
 )
 
 func Web() {
@@ -19,14 +20,28 @@ func Web() {
 	facades.Route().Static("public", "./public")
 
 	userController := controllers.NewUserController()
+	authController := controllers.NewAuthController()
+	jwtAuth := &middleware.JwtAuth{}
+
 	facades.Route().Prefix("api").Group(func(router route.Router) {
 		router.Get("/ping", func(ctx http.Context) http.Response {
 			return ctx.Response().Success().Json(http.Json{
 				"status":  "ok",
-				"message": "pong from  Backend",
+				"message": "pong from Goravel Backend",
 				"version": support.Version,
 			})
 		})
+
+		router.Prefix("auth").Group(func(authRouter route.Router) {
+			authRouter.Post("/login", authController.Login)
+
+			authRouter.Middleware(jwtAuth).Group(func(protected route.Router) {
+				protected.Get("/me", authController.Me)
+				protected.Post("/refresh", authController.Refresh)
+				protected.Post("/logout", authController.Logout)
+			})
+		})
+
 		router.Get("/users", userController.Index)
 	})
 }
