@@ -175,6 +175,8 @@
   "full_url": "Trường :attribute phải là một URL đầy đủ hợp lệ.",
 
   "attributes": {
+    "name": "họ và tên",
+    "username": "tên người dùng",
     "email": "email",
     "password": "mật khẩu",
     "password_confirmation": "xác nhận mật khẩu",

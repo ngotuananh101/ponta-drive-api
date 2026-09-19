@@ -30,7 +30,7 @@ func (r *ForgotPasswordRequest) Messages(ctx http.Context) map[string]string {
 }
 
 func (r *ForgotPasswordRequest) Attributes(ctx http.Context) map[string]string {
-	return map[string]string{}
+	return attributes(ctx, "email")
 }
 
 func (r *ForgotPasswordRequest) PrepareForValidation(ctx http.Context, data validation.Data) error {

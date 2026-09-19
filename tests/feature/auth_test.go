@@ -197,3 +197,47 @@ func (s *AuthTestSuite) TestI18nLanguageSupport() {
 	s.Require().NoError(err)
 	s.Equal("Invalid email or password", bodyEnQuery["message"])
 }
+
+func (s *AuthTestSuite) TestAttributeLocalization() {
+	// 1. Vietnamese validation message for missing password
+	viMissingPwd, _ := json.Marshal(map[string]string{
+		"email": s.user.Email,
+	})
+	respVi, err := s.Http(s.T()).Post("/api/auth/login", bytes.NewBuffer(viMissingPwd))
+	s.Require().NoError(err)
+	respVi.AssertStatus(422)
+	bodyVi, err := respVi.Json()
+	s.Require().NoError(err)
+	s.Equal("Trường mật khẩu là bắt buộc.", bodyVi["message"])
+
+	// 2. English validation message for missing password
+	respEn, err := s.Http(s.T()).WithHeader("Accept-Language", "en").Post("/api/auth/login", bytes.NewBuffer(viMissingPwd))
+	s.Require().NoError(err)
+	respEn.AssertStatus(422)
+	bodyEn, err := respEn.Json()
+	s.Require().NoError(err)
+	s.Equal("The password field is required.", bodyEn["message"])
+
+	// 3. Reset password mismatch attributes in Vietnamese
+	viMismatch, _ := json.Marshal(map[string]string{
+		"token":                 "dummy-token",
+		"email":                 s.user.Email,
+		"password":              "newpassword123",
+		"password_confirmation": "differentpassword",
+	})
+	respMismatchVi, err := s.Http(s.T()).Post("/api/auth/reset-password", bytes.NewBuffer(viMismatch))
+	s.Require().NoError(err)
+	respMismatchVi.AssertStatus(422)
+	bodyMismatchVi, err := respMismatchVi.Json()
+	s.Require().NoError(err)
+	s.Equal("Trường xác nhận mật khẩu phải khớp với mật khẩu.", bodyMismatchVi["message"])
+
+	// 4. Reset password mismatch attributes in English
+	respMismatchEn, err := s.Http(s.T()).Post("/api/auth/reset-password?lang=en", bytes.NewBuffer(viMismatch))
+	s.Require().NoError(err)
+	respMismatchEn.AssertStatus(422)
+	bodyMismatchEn, err := respMismatchEn.Json()
+	s.Require().NoError(err)
+	s.Equal("The password confirmation field must match password.", bodyMismatchEn["message"])
+}
+

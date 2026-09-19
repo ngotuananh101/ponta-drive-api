@@ -36,7 +36,7 @@ func (r *ResetPasswordRequest) Messages(ctx http.Context) map[string]string {
 }
 
 func (r *ResetPasswordRequest) Attributes(ctx http.Context) map[string]string {
-	return map[string]string{}
+	return attributes(ctx, "token", "email", "password", "password_confirmation")
 }
 
 func (r *ResetPasswordRequest) PrepareForValidation(ctx http.Context, data validation.Data) error {
