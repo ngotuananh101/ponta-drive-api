@@ -232,13 +232,17 @@ func (c *AuthController) ForgotPassword(ctx http.Context) http.Response {
 
 	frontendUrl := facades.Config().GetString("app.frontend_url", "http://localhost:5173")
 	resetUrl := fmt.Sprintf("%s/reset-password?token=%s&email=%s", frontendUrl, rawToken, url.QueryEscape(req.Email))
+	logoUrl := facades.Config().GetString("app.logo_url", "")
+	if logoUrl == "" {
+		logoUrl = fmt.Sprintf("%s/logo.png", frontendUrl)
+	}
 
 	emailSubject := facades.Lang(ctx).Get("auth.mail_reset_subject")
 
 	// Send the reset email asynchronously so the request is not blocked (and
 	// potential 408 request timeouts) by a slow external SMTP relay.
 	go func() {
-		_ = facades.Mail().To([]string{user.Email}).
+		if err := facades.Mail().To([]string{user.Email}).
 			Subject(emailSubject).
 			Content(mail.Content{
 				HtmlView: "reset_password.html",
@@ -249,9 +253,12 @@ func (c *AuthController) ForgotPassword(ctx http.Context) http.Response {
 					"ResetUrl":      resetUrl,
 					"ExpireMinutes": 60,
 					"Year":          time.Now().Year(),
+					"LogoUrl":       logoUrl,
 				},
 			}).
-			Send()
+			Send(); err != nil {
+			facades.Log().Errorf("[Auth] Gửi email đặt lại mật khẩu tới %s thất bại: %v", user.Email, err)
+		}
 	}()
 
 	return ctx.Response().Success().Json(http.Json{

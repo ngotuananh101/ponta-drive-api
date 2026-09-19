@@ -56,6 +56,12 @@ func TestLayoutEngine_Render(t *testing.T) {
 
 	// The content slot placeholder is resolved, not left literal.
 	assert.NotContains(t, out, `{{ template "content" . }}`)
+
+	// With LogoUrl provided
+	data["LogoUrl"] = "https://example.com/logo.png"
+	outWithLogo, err := engine.Render("reset_password.html", data)
+	assert.NoError(t, err)
+	assert.Contains(t, outWithLogo, `src="https://example.com/logo.png"`)
 }
 
 func TestLayoutEngine_RenderTemplateNotFound(t *testing.T) {

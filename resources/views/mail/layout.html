@@ -93,11 +93,17 @@
     <div class="container">
       <!-- Header -->
       <div class="header">
-        <div class="brand-icon">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>
-          </svg>
-        </div>
+        <table border="0" cellpadding="0" cellspacing="0" align="center" style="margin: 0 auto 14px;">
+          <tr>
+            <td align="center" valign="middle" style="width: 56px; height: 56px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; text-align: center;">
+              {{ if .LogoUrl }}
+                <img src="{{ .LogoUrl }}" alt="Ponta Drive" width="42" height="42" style="display: block; border: 0; outline: none; margin: 0 auto;" />
+              {{ else }}
+                <span style="font-size: 26px; line-height: 56px; display: block; user-select: none;">☁️</span>
+              {{ end }}
+            </td>
+          </tr>
+        </table>
         <h1 class="brand-title">Ponta Drive</h1>
       </div>
 
