@@ -32,7 +32,7 @@ func (r *LoginRequest) Messages(ctx http.Context) map[string]string {
 }
 
 func (r *LoginRequest) Attributes(ctx http.Context) map[string]string {
-	return map[string]string{}
+	return attributes(ctx, "email", "password")
 }
 
 func (r *LoginRequest) PrepareForValidation(ctx http.Context, data validation.Data) error {

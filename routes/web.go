@@ -18,12 +18,14 @@ func Web() {
 	})
 
 	facades.Route().Static("public", "./public")
+	facades.Route().StaticFile("favicon.ico", "./public/favicon.ico")
 
 	userController := controllers.NewUserController()
 	authController := controllers.NewAuthController()
 	jwtAuth := &middleware.JwtAuth{}
+	setLocale := &middleware.SetLocale{}
 
-	facades.Route().Prefix("api").Group(func(router route.Router) {
+	facades.Route().Prefix("api").Middleware(setLocale).Group(func(router route.Router) {
 		router.Get("/ping", func(ctx http.Context) http.Response {
 			return ctx.Response().Success().Json(http.Json{
 				"status":  "ok",
@@ -34,6 +36,8 @@ func Web() {
 
 		router.Prefix("auth").Group(func(authRouter route.Router) {
 			authRouter.Post("/login", authController.Login)
+			authRouter.Post("/forgot-password", authController.ForgotPassword)
+			authRouter.Post("/reset-password", authController.ResetPassword)
 
 			authRouter.Middleware(jwtAuth).Group(func(protected route.Router) {
 				protected.Get("/me", authController.Me)

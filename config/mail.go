@@ -1,7 +1,9 @@
 package config
 
 import (
+	contractsmail "github.com/goravel/framework/contracts/mail"
 	"ponta_drive/app/facades"
+	appmail "ponta_drive/app/mail"
 )
 
 func init() {
@@ -49,19 +51,18 @@ func init() {
 		//
 		// Available Drivers: "html", "custom"
 		"template": map[string]any{
-			"default": config.Env("MAIL_TEMPLATE_ENGINE", "html"),
+			"default": config.Env("MAIL_TEMPLATE_ENGINE", "layout"),
 			"engines": map[string]any{
+				"layout": map[string]any{
+					"driver": "custom",
+					"via": func() (contractsmail.Template, error) {
+						return appmail.NewLayoutEngine(config.GetString("mail.template.engines.html.path", "resources/views/mail")), nil
+					},
+				},
 				"html": map[string]any{
 					"driver": "html",
 					"path":   config.Env("MAIL_VIEWS_PATH", "resources/views/mail"),
 				},
-				// Example custom template engine:
-				// "blade": map[string]any{
-				//     "driver": "custom",
-				//     "via": func() (mail.Template, error) {
-				//         return NewBladeTemplateEngine(), nil
-				//     },
-				// },
 			},
 		},
 	})

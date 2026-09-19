@@ -172,5 +172,14 @@
   "gte_date": "The :attribute field must be a date after or equal to :date.",
   "lte_date": "The :attribute field must be a date before or equal to :date.",
   "number": "The :attribute field must be a number.",
-  "full_url": "The :attribute field must be a valid URL."
+  "full_url": "The :attribute field must be a valid URL.",
+
+  "attributes": {
+    "name": "name",
+    "username": "username",
+    "email": "email",
+    "password": "password",
+    "password_confirmation": "password confirmation",
+    "token": "token"
+  }
 }
