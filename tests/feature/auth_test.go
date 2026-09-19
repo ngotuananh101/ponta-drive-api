@@ -166,3 +166,34 @@ func (s *AuthTestSuite) TestRefreshAndLogout() {
 	s.Require().NoError(err)
 	logoutResp.AssertOk()
 }
+
+func (s *AuthTestSuite) TestI18nLanguageSupport() {
+	payload, _ := json.Marshal(map[string]string{
+		"email":    s.user.Email,
+		"password": "wrongpassword",
+	})
+
+	// 1. Default locale (vi)
+	respVi, err := s.Http(s.T()).Post("/api/auth/login", bytes.NewBuffer(payload))
+	s.Require().NoError(err)
+	respVi.AssertUnauthorized()
+	bodyVi, err := respVi.Json()
+	s.Require().NoError(err)
+	s.Equal("Email hoặc mật khẩu không chính xác", bodyVi["message"])
+
+	// 2. English via Accept-Language header
+	respEnHeader, err := s.Http(s.T()).WithHeader("Accept-Language", "en-US,en;q=0.9").Post("/api/auth/login", bytes.NewBuffer(payload))
+	s.Require().NoError(err)
+	respEnHeader.AssertUnauthorized()
+	bodyEnHeader, err := respEnHeader.Json()
+	s.Require().NoError(err)
+	s.Equal("Invalid email or password", bodyEnHeader["message"])
+
+	// 3. English via query param ?lang=en
+	respEnQuery, err := s.Http(s.T()).Post("/api/auth/login?lang=en", bytes.NewBuffer(payload))
+	s.Require().NoError(err)
+	respEnQuery.AssertUnauthorized()
+	bodyEnQuery, err := respEnQuery.Json()
+	s.Require().NoError(err)
+	s.Equal("Invalid email or password", bodyEnQuery["message"])
+}

@@ -57,21 +57,35 @@ func (c *AuthController) Login(ctx http.Context) http.Response {
 		})
 	}
 
+	query, err := facades.SafeQuery()
+	if err != nil {
+		return ctx.Response().Json(http.StatusInternalServerError, http.Json{
+			"status":  "error",
+			"message": facades.Lang(ctx).Get("auth.db_error"),
+		})
+	}
+
 	var user models.User
-	err = facades.Orm().Query().
+	err = query.
 		Where("email = ?", loginRequest.Email).
 		First(&user)
-	if err != nil || user.ID == 0 {
+	if err != nil {
+		return ctx.Response().Json(http.StatusInternalServerError, http.Json{
+			"status":  "error",
+			"message": facades.Lang(ctx).Get("auth.db_error"),
+		})
+	}
+	if user.ID == 0 {
 		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
 			"status":  "error",
-			"message": "Invalid email or password",
+			"message": facades.Lang(ctx).Get("auth.invalid_credentials"),
 		})
 	}
 
 	if !facades.Hash().Check(loginRequest.Password, user.Password) {
 		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
 			"status":  "error",
-			"message": "Invalid email or password",
+			"message": facades.Lang(ctx).Get("auth.invalid_credentials"),
 		})
 	}
 
@@ -79,7 +93,7 @@ func (c *AuthController) Login(ctx http.Context) http.Response {
 	if err != nil {
 		return ctx.Response().Json(http.StatusInternalServerError, http.Json{
 			"status":  "error",
-			"message": "Failed to generate token",
+			"message": facades.Lang(ctx).Get("auth.token_generate_failed"),
 		})
 	}
 
@@ -110,7 +124,7 @@ func (c *AuthController) Me(ctx http.Context) http.Response {
 	if err := facades.Auth(ctx).User(&user); err != nil || user.ID == 0 {
 		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
 			"status":  "error",
-			"message": "Unauthenticated",
+			"message": facades.Lang(ctx).Get("auth.unauthenticated"),
 		})
 	}
 
@@ -125,7 +139,7 @@ func (c *AuthController) Refresh(ctx http.Context) http.Response {
 	if err != nil {
 		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
 			"status":  "error",
-			"message": "Failed to refresh token",
+			"message": facades.Lang(ctx).Get("auth.token_refresh_failed"),
 		})
 	}
 
@@ -145,13 +159,13 @@ func (c *AuthController) Logout(ctx http.Context) http.Response {
 	if err := facades.Auth(ctx).Logout(); err != nil {
 		return ctx.Response().Json(http.StatusBadRequest, http.Json{
 			"status":  "error",
-			"message": "Failed to logout",
+			"message": facades.Lang(ctx).Get("auth.logout_failed"),
 		})
 	}
 
 	return ctx.Response().Success().Json(http.Json{
 		"status":  "success",
-		"message": "Successfully logged out",
+		"message": facades.Lang(ctx).Get("auth.logout_success"),
 	})
 }
 
@@ -177,13 +191,27 @@ func (c *AuthController) ForgotPassword(ctx http.Context) http.Response {
 
 	// Success message returned to the client regardless of whether the user
 	// exists, so the endpoint cannot be used to enumerate registered emails.
-	successMessage := "Nếu email tồn tại trong hệ thống, liên kết đặt lại mật khẩu đã được gửi."
+	successMessage := facades.Lang(ctx).Get("auth.forgot_password_success")
+
+	query, err := facades.SafeQuery()
+	if err != nil {
+		return ctx.Response().Json(http.StatusInternalServerError, http.Json{
+			"status":  "error",
+			"message": facades.Lang(ctx).Get("auth.db_error"),
+		})
+	}
 
 	var user models.User
-	err = facades.Orm().Query().
+	err = query.
 		Where("email = ?", req.Email).
 		First(&user)
-	if err != nil || user.ID == 0 {
+	if err != nil {
+		return ctx.Response().Json(http.StatusInternalServerError, http.Json{
+			"status":  "error",
+			"message": facades.Lang(ctx).Get("auth.db_error"),
+		})
+	}
+	if user.ID == 0 {
 		return ctx.Response().Success().Json(http.Json{
 			"status":  "success",
 			"message": successMessage,
@@ -194,26 +222,28 @@ func (c *AuthController) ForgotPassword(ctx http.Context) http.Response {
 	hashedToken := hashToken(rawToken)
 
 	// Remove any previously issued reset token for this email and store a new one.
-	_, _ = facades.Orm().Query().Where("email = ?", req.Email).Delete(&models.PasswordResetToken{})
+	_, _ = query.Where("email = ?", req.Email).Delete(&models.PasswordResetToken{})
 
 	resetRecord := models.PasswordResetToken{
 		Email: req.Email,
 		Token: hashedToken,
 	}
-	_ = facades.Orm().Query().Create(&resetRecord)
+	_ = query.Create(&resetRecord)
 
 	frontendUrl := facades.Config().GetString("app.frontend_url", "http://localhost:5173")
 	resetUrl := fmt.Sprintf("%s/reset-password?token=%s&email=%s", frontendUrl, rawToken, url.QueryEscape(req.Email))
+
+	emailSubject := facades.Lang(ctx).Get("auth.mail_reset_subject")
 
 	// Send the reset email asynchronously so the request is not blocked (and
 	// potential 408 request timeouts) by a slow external SMTP relay.
 	go func() {
 		_ = facades.Mail().To([]string{user.Email}).
-			Subject("Đặt lại mật khẩu - Ponta Drive").
+			Subject(emailSubject).
 			Content(mail.Content{
 				HtmlView: "reset_password.html",
 				With: map[string]any{
-					"Subject":       "Đặt lại mật khẩu - Ponta Drive",
+					"Subject":       emailSubject,
 					"Name":          user.Name,
 					"Email":         user.Email,
 					"ResetUrl":      resetUrl,
@@ -249,51 +279,71 @@ func (c *AuthController) ResetPassword(ctx http.Context) http.Response {
 		})
 	}
 
+	query, err := facades.SafeQuery()
+	if err != nil {
+		return ctx.Response().Json(http.StatusInternalServerError, http.Json{
+			"status":  "error",
+			"message": facades.Lang(ctx).Get("auth.db_error"),
+		})
+	}
+
 	hashedToken := hashToken(req.Token)
 
 	var resetRecord models.PasswordResetToken
-	err = facades.Orm().Query().
+	err = query.
 		Where("email = ? AND token = ?", req.Email, hashedToken).
 		First(&resetRecord)
+	if err != nil {
+		return ctx.Response().Json(http.StatusInternalServerError, http.Json{
+			"status":  "error",
+			"message": facades.Lang(ctx).Get("auth.db_error"),
+		})
+	}
 	// Goravel's Query().First() swallows gorm.ErrRecordNotFound and returns a
 	// nil error, so an empty record must be checked explicitly (mirrors the
 	// `user.ID == 0` guard used in Login).
-	if err != nil || resetRecord.Token == "" {
+	if resetRecord.Token == "" {
 		return ctx.Response().Json(http.StatusBadRequest, http.Json{
 			"status":  "error",
-			"message": "Mã khôi phục không hợp lệ hoặc đã hết hạn.",
+			"message": facades.Lang(ctx).Get("auth.reset_token_invalid"),
 		})
 	}
 
 	// Expired token (older than 60 minutes): clean it up and reject the request.
 	if resetRecord.CreatedAt != nil && resetRecord.CreatedAt.DiffInMinutes(carbon.Now()) > 60 {
-		_, _ = facades.Orm().Query().Where("email = ?", req.Email).Delete(&models.PasswordResetToken{})
+		_, _ = query.Where("email = ?", req.Email).Delete(&models.PasswordResetToken{})
 		return ctx.Response().Json(http.StatusBadRequest, http.Json{
 			"status":  "error",
-			"message": "Mã khôi phục đã hết hạn. Vui lòng yêu cầu lại.",
+			"message": facades.Lang(ctx).Get("auth.reset_token_expired"),
 		})
 	}
 
 	var user models.User
-	err = facades.Orm().Query().
+	err = query.
 		Where("email = ?", req.Email).
 		First(&user)
-	if err != nil || user.ID == 0 {
+	if err != nil {
+		return ctx.Response().Json(http.StatusInternalServerError, http.Json{
+			"status":  "error",
+			"message": facades.Lang(ctx).Get("auth.db_error"),
+		})
+	}
+	if user.ID == 0 {
 		return ctx.Response().Json(http.StatusNotFound, http.Json{
 			"status":  "error",
-			"message": "Không tìm thấy người dùng.",
+			"message": facades.Lang(ctx).Get("auth.user_not_found"),
 		})
 	}
 
 	newHash, _ := facades.Hash().Make(req.Password)
 	user.Password = newHash
-	_ = facades.Orm().Query().Save(&user)
+	_ = query.Save(&user)
 
 	// Single-use token: invalidate it once the password has been reset.
-	_, _ = facades.Orm().Query().Where("email = ?", req.Email).Delete(&models.PasswordResetToken{})
+	_, _ = query.Where("email = ?", req.Email).Delete(&models.PasswordResetToken{})
 
 	return ctx.Response().Success().Json(http.Json{
 		"status":  "success",
-		"message": "Đặt lại mật khẩu thành công. Vui lòng đăng nhập bằng mật khẩu mới.",
+		"message": facades.Lang(ctx).Get("auth.reset_password_success"),
 	})
 }
