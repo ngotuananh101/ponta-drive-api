@@ -4,14 +4,5 @@ services:
       context: .
     env_file:
       - ./.env
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    ports:
-      - "${APP_HOST}:${APP_PORT}:${APP_PORT}"
+    network_mode: "host"
     restart: always
-    networks:
-      - ponta_network
-
-networks:
-  ponta_network:
-    external: true
