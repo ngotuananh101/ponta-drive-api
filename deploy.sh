@@ -83,6 +83,9 @@ mv main.new main
 # 7. Set lại quyền thực thi cho deploy.sh
 chmod +x deploy.sh
 
+# 8. Triển khai với docker compose
+docker-compose up -d --build
+
 log_success "========================================================"
 log_success "🎉 DEPLOY THÀNH CÔNG! Backend đã sẵn sàng phục vụ."
 log_success "========================================================"

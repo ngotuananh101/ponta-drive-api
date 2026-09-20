@@ -5,6 +5,13 @@ services:
       - ./.env
     volumes:
       - ./:/app
+    working_dir: /app
     network_mode: "host"
     restart: unless-stopped
     entrypoint: /app/main
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f '/app/main' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
