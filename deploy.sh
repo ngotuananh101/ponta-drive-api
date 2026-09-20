@@ -56,34 +56,31 @@ git fetch origin "$BRANCH"
 git reset --hard "origin/$BRANCH"
 log_success "Đã cập nhật mã nguồn thành công."
 
-# 3. Phân loại hình thức triển khai: Docker Compose hoặc Native Systemd
-# ----------------------------------------------------
-# TRIỂN KHAI NATIVE (GO BINARY + SYSTEMD)
-# ----------------------------------------------------
+# 3. Kiểm tra và tải các thư viện dependencies
 log_info "2/5. Kiểm tra môi trường Go và tải các thư viện dependencies..."
 if ! command -v go >/dev/null 2>&1; then
-    log_error "Không tìm thấy lệnh 'go'. Vui lòng cài đặt Go trên server hoặc chuyển USE_DOCKER=true."
+    log_error "Không tìm thấy lệnh 'go'. Vui lòng cài đặt Go trên server."
     exit 1
 fi
 
 go mod tidy
 go mod download
 
-# 3. Biên dịch binary mới (Atomic Swap để tránh làm gián đoạn file binary đang chạy)
+# 4. Biên dịch binary mới (Atomic Swap để tránh làm gián đoạn file binary đang chạy)
 log_info "3/5. Biên dịch Go binary (main.new)..."
 go build -ldflags "-s -w -extldflags '-static'" -o main.new .
 chmod +x main.new
 log_success "Biên dịch binary thành công."
 
-# 4. Chạy Migration Database
+# 5. Chạy Migration Database
 log_info "4/5. Đang chạy Database Migrations..."
 ./main.new artisan migrate
 log_success "Database migrations hoàn tất."
 
-# Hoán đổi file binary chính
+# 6. Hoán đổi file binary chính
 mv main.new main
 
-# 5. Set lại quyền thực thi cho deploy.sh
+# 7. Set lại quyền thực thi cho deploy.sh
 chmod +x deploy.sh
 
 log_success "========================================================"
