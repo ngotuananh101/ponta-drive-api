@@ -4,6 +4,6 @@
 .env
 .env.*
 !.env.example
-storage
-tmp
+/storage
+/tmp
 build-errors.log

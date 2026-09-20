@@ -14,8 +14,15 @@ WORKDIR /www
 
 COPY --from=builder /build/main /www/
 COPY --from=builder /build/.env /www/.env
+COPY --from=builder /build/app/ /www/app/
+COPY --from=builder /build/bootstrap/ /www/bootstrap/
+COPY --from=builder /build/config/ /www/config/
+COPY --from=builder /build/database/ /www/database/
+COPY --from=builder /build/lang/ /www/lang/
 COPY --from=builder /build/public/ /www/public/
 COPY --from=builder /build/resources/ /www/resources/
-COPY --from=builder /build/lang/ /www/lang/
+COPY --from=builder /build/routes/ /www/routes/
+COPY --from=builder /build/tests/ /www/tests/
+RUN mkdir -p /www/storage /www/tmp
 
 ENTRYPOINT ["/www/main"]
