@@ -128,6 +128,9 @@ for i in {1..15}; do
     sleep 2
 done
 
+# 5. Set lại quyền thực thi cho deploy.sh
+chmod +x deploy.sh
+
 if [ "$HEALTHY" = true ]; then
     log_success "========================================================"
     log_success "🎉 DEPLOY THÀNH CÔNG! Backend đã sẵn sàng phục vụ."
