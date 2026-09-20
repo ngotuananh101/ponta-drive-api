@@ -6,10 +6,4 @@ services:
       - "host.docker.internal:host-gateway"
     ports:
       - "${APP_HOST}:${APP_PORT}:${APP_PORT}"
-    networks:
-      - bridge
     restart: always
-
-networks:
-  bridge:
-    external: true
