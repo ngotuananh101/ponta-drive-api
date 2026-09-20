@@ -1,0 +1,13 @@
+{
+  "fetch_failed": "Failed to fetch cloud accounts",
+  "driver_init_failed": "Failed to initialize storage driver",
+  "connection_test_failed": "Connection test failed",
+  "connection_success": "Connection successful",
+  "encrypt_failed": "Failed to encrypt credentials",
+  "save_failed": "Failed to save cloud account",
+  "not_found": "Cloud account not found",
+  "update_failed": "Failed to update cloud account",
+  "delete_failed": "Failed to delete cloud account",
+  "deleted": "Cloud account deleted successfully",
+  "sync_started": "Bucket synchronization initiated"
+}

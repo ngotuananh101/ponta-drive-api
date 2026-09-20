@@ -1,0 +1,13 @@
+{
+  "fetch_failed": "Không thể lấy danh sách tài khoản đám mây",
+  "driver_init_failed": "Không thể khởi tạo trình điều khiển lưu trữ",
+  "connection_test_failed": "Kiểm tra kết nối thất bại",
+  "connection_success": "Kết nối thành công",
+  "encrypt_failed": "Không thể mã hóa thông tin xác thực",
+  "save_failed": "Không thể lưu tài khoản đám mây",
+  "not_found": "Không tìm thấy tài khoản đám mây",
+  "update_failed": "Không thể cập nhật tài khoản đám mây",
+  "delete_failed": "Không thể xóa tài khoản đám mây",
+  "deleted": "Tài khoản đám mây đã được xóa thành công",
+  "sync_started": "Đã bắt đầu tiến trình đồng bộ hóa thùng lưu trữ"
+}

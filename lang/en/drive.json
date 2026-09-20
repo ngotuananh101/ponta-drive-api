@@ -1,0 +1,6 @@
+{
+  "cloud_account_required": "cloud_account_id is required",
+  "list_failed": "Failed to list items",
+  "item_not_found": "Drive item not found",
+  "item_deleted": "Drive item deleted successfully"
+}

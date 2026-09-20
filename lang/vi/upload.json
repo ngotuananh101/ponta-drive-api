@@ -1,0 +1,6 @@
+{
+  "session_id_required": "session_id là bắt buộc",
+  "part_number_required": "part_number hợp lệ là bắt buộc",
+  "payload_missing": "Dữ liệu phần tải lên bị trống",
+  "aborted": "Đã hủy phiên tải lên đa phần thành công"
+}
