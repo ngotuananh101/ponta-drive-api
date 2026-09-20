@@ -70,7 +70,7 @@ func (s *DownloadAPITestSuite) SetupTest() {
 		"email":    s.user.Email,
 		"password": "password123",
 	})
-	resp, err := s.Http(s.T()).Post("/api/auth/login", bytes.NewBuffer(loginPayload))
+	resp, err := s.Http(s.T()).Post("/auth/login", bytes.NewBuffer(loginPayload))
 	s.Require().NoError(err)
 	resp.AssertOk()
 
@@ -125,8 +125,8 @@ func (s *DownloadAPITestSuite) TearDownTest() {
 }
 
 func (s *DownloadAPITestSuite) TestDownloadPresignedJSON() {
-	// 1. GET /api/v1/drive/items/{uuid}/download?mode=json
-	resp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/api/v1/drive/items/%s/download?mode=json", s.item.UUID))
+	// 1. GET /v1/drive/items/{uuid}/download?mode=json
+	resp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/drive/items/%s/download?mode=json", s.item.UUID))
 	s.Require().NoError(err)
 	resp.AssertOk()
 
@@ -139,16 +139,16 @@ func (s *DownloadAPITestSuite) TestDownloadPresignedJSON() {
 }
 
 func (s *DownloadAPITestSuite) TestDownloadRedirect() {
-	// 2. GET /api/v1/drive/items/{uuid}/download?mode=redirect
-	resp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/api/v1/drive/items/%s/download?mode=redirect", s.item.UUID))
+	// 2. GET /v1/drive/items/{uuid}/download?mode=redirect
+	resp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/drive/items/%s/download?mode=redirect", s.item.UUID))
 	s.Require().NoError(err)
 	resp.AssertStatus(http.StatusFound)
 	s.NotEmpty(resp.Headers().Get("Location"))
 }
 
 func (s *DownloadAPITestSuite) TestDownloadStream() {
-	// 3. GET /api/v1/drive/items/{uuid}/download?mode=stream
-	resp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/api/v1/drive/items/%s/download?mode=stream", s.item.UUID))
+	// 3. GET /v1/drive/items/{uuid}/download?mode=stream
+	resp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/drive/items/%s/download?mode=stream", s.item.UUID))
 	s.Require().NoError(err)
 	resp.AssertOk()
 

@@ -84,7 +84,7 @@ func (s *PasswordResetTestSuite) TestCreateAndRetrieveToken() {
 func (s *PasswordResetTestSuite) TestForgotPasswordValidation() {
 	// 1.1 Empty payload (no email) -> 422 Unprocessable Entity
 	emptyPayload, _ := json.Marshal(map[string]string{})
-	resp, err := s.Http(s.T()).Post("/api/auth/forgot-password", bytes.NewBuffer(emptyPayload))
+	resp, err := s.Http(s.T()).Post("/auth/forgot-password", bytes.NewBuffer(emptyPayload))
 	s.Require().NoError(err)
 	resp.AssertStatus(422)
 
@@ -92,7 +92,7 @@ func (s *PasswordResetTestSuite) TestForgotPasswordValidation() {
 	invalidEmailPayload, _ := json.Marshal(map[string]string{
 		"email": "invalid-email",
 	})
-	resp, err = s.Http(s.T()).Post("/api/auth/forgot-password", bytes.NewBuffer(invalidEmailPayload))
+	resp, err = s.Http(s.T()).Post("/auth/forgot-password", bytes.NewBuffer(invalidEmailPayload))
 	s.Require().NoError(err)
 	resp.AssertStatus(422)
 }
@@ -102,7 +102,7 @@ func (s *PasswordResetTestSuite) TestForgotPasswordWithNonExistentEmail() {
 	payload, _ := json.Marshal(map[string]string{
 		"email": "notfound@example.com",
 	})
-	resp, err := s.Http(s.T()).Post("/api/auth/forgot-password", bytes.NewBuffer(payload))
+	resp, err := s.Http(s.T()).Post("/auth/forgot-password", bytes.NewBuffer(payload))
 	s.Require().NoError(err)
 	resp.AssertOk()
 
@@ -125,7 +125,7 @@ func (s *PasswordResetTestSuite) TestForgotPasswordSuccess() {
 	payload, _ := json.Marshal(map[string]string{
 		"email": s.user.Email,
 	})
-	resp, err := s.Http(s.T()).Post("/api/auth/forgot-password", bytes.NewBuffer(payload))
+	resp, err := s.Http(s.T()).Post("/auth/forgot-password", bytes.NewBuffer(payload))
 	s.Require().NoError(err)
 	resp.AssertOk()
 
@@ -151,7 +151,7 @@ func (s *PasswordResetTestSuite) TestResetPasswordValidation() {
 		"password":              "newpassword123",
 		"password_confirmation": "newpassword123",
 	})
-	resp, err := s.Http(s.T()).Post("/api/auth/reset-password", bytes.NewBuffer(missingTokenPayload))
+	resp, err := s.Http(s.T()).Post("/auth/reset-password", bytes.NewBuffer(missingTokenPayload))
 	s.Require().NoError(err)
 	resp.AssertStatus(422)
 
@@ -161,7 +161,7 @@ func (s *PasswordResetTestSuite) TestResetPasswordValidation() {
 		"password":              "newpassword123",
 		"password_confirmation": "newpassword123",
 	})
-	resp, err = s.Http(s.T()).Post("/api/auth/reset-password", bytes.NewBuffer(missingEmailPayload))
+	resp, err = s.Http(s.T()).Post("/auth/reset-password", bytes.NewBuffer(missingEmailPayload))
 	s.Require().NoError(err)
 	resp.AssertStatus(422)
 
@@ -172,7 +172,7 @@ func (s *PasswordResetTestSuite) TestResetPasswordValidation() {
 		"password":              "12345",
 		"password_confirmation": "12345",
 	})
-	resp, err = s.Http(s.T()).Post("/api/auth/reset-password", bytes.NewBuffer(shortPasswordPayload))
+	resp, err = s.Http(s.T()).Post("/auth/reset-password", bytes.NewBuffer(shortPasswordPayload))
 	s.Require().NoError(err)
 	resp.AssertStatus(422)
 
@@ -183,7 +183,7 @@ func (s *PasswordResetTestSuite) TestResetPasswordValidation() {
 		"password":              "newpassword123",
 		"password_confirmation": "differentpassword123",
 	})
-	resp, err = s.Http(s.T()).Post("/api/auth/reset-password", bytes.NewBuffer(mismatchPayload))
+	resp, err = s.Http(s.T()).Post("/auth/reset-password", bytes.NewBuffer(mismatchPayload))
 	s.Require().NoError(err)
 	resp.AssertStatus(422)
 }
@@ -196,7 +196,7 @@ func (s *PasswordResetTestSuite) TestResetPasswordInvalidToken() {
 		"password":              "newpassword123",
 		"password_confirmation": "newpassword123",
 	})
-	resp, err := s.Http(s.T()).Post("/api/auth/reset-password", bytes.NewBuffer(payload))
+	resp, err := s.Http(s.T()).Post("/auth/reset-password", bytes.NewBuffer(payload))
 	s.Require().NoError(err)
 	resp.AssertStatus(400)
 
@@ -226,7 +226,7 @@ func (s *PasswordResetTestSuite) TestResetPasswordExpiredToken() {
 		"password":              "newpassword123",
 		"password_confirmation": "newpassword123",
 	})
-	resp, err := s.Http(s.T()).Post("/api/auth/reset-password", bytes.NewBuffer(payload))
+	resp, err := s.Http(s.T()).Post("/auth/reset-password", bytes.NewBuffer(payload))
 	s.Require().NoError(err)
 	resp.AssertStatus(400)
 
@@ -264,7 +264,7 @@ func (s *PasswordResetTestSuite) TestResetPasswordSuccess() {
 		"password":              "newpassword123",
 		"password_confirmation": "newpassword123",
 	})
-	resp, err := s.Http(s.T()).Post("/api/auth/reset-password", bytes.NewBuffer(payload))
+	resp, err := s.Http(s.T()).Post("/auth/reset-password", bytes.NewBuffer(payload))
 	s.Require().NoError(err)
 	resp.AssertOk()
 
@@ -286,7 +286,7 @@ func (s *PasswordResetTestSuite) TestResetPasswordSuccess() {
 		"email":    s.user.Email,
 		"password": "newpassword123",
 	})
-	newPwdResp, err := s.Http(s.T()).Post("/api/auth/login", bytes.NewBuffer(newPwdPayload))
+	newPwdResp, err := s.Http(s.T()).Post("/auth/login", bytes.NewBuffer(newPwdPayload))
 	s.Require().NoError(err)
 	newPwdResp.AssertOk()
 	newPwdBody, err := newPwdResp.Json()
@@ -298,7 +298,7 @@ func (s *PasswordResetTestSuite) TestResetPasswordSuccess() {
 		"email":    s.user.Email,
 		"password": "secret123",
 	})
-	oldPwdResp, err := s.Http(s.T()).Post("/api/auth/login", bytes.NewBuffer(oldPwdPayload))
+	oldPwdResp, err := s.Http(s.T()).Post("/auth/login", bytes.NewBuffer(oldPwdPayload))
 	s.Require().NoError(err)
 	oldPwdResp.AssertUnauthorized()
 }

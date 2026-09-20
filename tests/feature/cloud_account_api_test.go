@@ -46,7 +46,7 @@ func (s *CloudAccountAPITestSuite) SetupTest() {
 		"email":    s.user.Email,
 		"password": "password123",
 	})
-	resp, err := s.Http(s.T()).Post("/api/auth/login", bytes.NewBuffer(loginPayload))
+	resp, err := s.Http(s.T()).Post("/auth/login", bytes.NewBuffer(loginPayload))
 	s.Require().NoError(err)
 	resp.AssertOk()
 
@@ -65,13 +65,13 @@ func (s *CloudAccountAPITestSuite) TearDownTest() {
 }
 
 func (s *CloudAccountAPITestSuite) TestUnauthorizedAccess() {
-	resp, err := s.Http(s.T()).Get("/api/v1/cloud-accounts")
+	resp, err := s.Http(s.T()).Get("/v1/cloud-accounts")
 	s.Require().NoError(err)
 	resp.AssertStatus(http.StatusUnauthorized)
 }
 
 func (s *CloudAccountAPITestSuite) TestCloudAccountLifecycle() {
-	// 1. Create Cloud Account (POST /api/v1/cloud-accounts)
+	// 1. Create Cloud Account (POST /v1/cloud-accounts)
 	createPayload, _ := json.Marshal(map[string]any{
 		"name":              "Primary AWS",
 		"provider":          models.ProviderS3,
@@ -84,7 +84,7 @@ func (s *CloudAccountAPITestSuite) TestCloudAccountLifecycle() {
 		"total_storage":     10737418240, // 10GB
 	})
 
-	resp, err := s.Http(s.T()).WithToken(s.token).Post("/api/v1/cloud-accounts", bytes.NewBuffer(createPayload))
+	resp, err := s.Http(s.T()).WithToken(s.token).Post("/v1/cloud-accounts", bytes.NewBuffer(createPayload))
 	s.Require().NoError(err)
 	resp.AssertStatus(http.StatusCreated)
 
@@ -103,8 +103,8 @@ func (s *CloudAccountAPITestSuite) TestCloudAccountLifecycle() {
 	s.Equal("ponta-prod-bucket", credsData["bucket"])
 	s.NotContains(credsData, "secret_access_key")
 
-	// 2. List Cloud Accounts (GET /api/v1/cloud-accounts)
-	listResp, err := s.Http(s.T()).WithToken(s.token).Get("/api/v1/cloud-accounts")
+	// 2. List Cloud Accounts (GET /v1/cloud-accounts)
+	listResp, err := s.Http(s.T()).WithToken(s.token).Get("/v1/cloud-accounts")
 	s.Require().NoError(err)
 	listResp.AssertOk()
 
@@ -113,8 +113,8 @@ func (s *CloudAccountAPITestSuite) TestCloudAccountLifecycle() {
 	accountsList := listBody["data"].([]any)
 	s.Len(accountsList, 1)
 
-	// 3. Show Cloud Account (GET /api/v1/cloud-accounts/{id})
-	showResp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/api/v1/cloud-accounts/%d", accountID))
+	// 3. Show Cloud Account (GET /v1/cloud-accounts/{id})
+	showResp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/cloud-accounts/%d", accountID))
 	s.Require().NoError(err)
 	showResp.AssertOk()
 
@@ -123,11 +123,11 @@ func (s *CloudAccountAPITestSuite) TestCloudAccountLifecycle() {
 	showData := showBody["data"].(map[string]any)
 	s.Equal("Primary AWS", showData["name"])
 
-	// 4. Update Cloud Account (PUT /api/v1/cloud-accounts/{id})
+	// 4. Update Cloud Account (PUT /v1/cloud-accounts/{id})
 	updatePayload, _ := json.Marshal(map[string]any{
 		"name": "Updated Primary AWS",
 	})
-	updateResp, err := s.Http(s.T()).WithToken(s.token).Put(fmt.Sprintf("/api/v1/cloud-accounts/%d", accountID), bytes.NewBuffer(updatePayload))
+	updateResp, err := s.Http(s.T()).WithToken(s.token).Put(fmt.Sprintf("/v1/cloud-accounts/%d", accountID), bytes.NewBuffer(updatePayload))
 	s.Require().NoError(err)
 	updateResp.AssertOk()
 
@@ -136,13 +136,13 @@ func (s *CloudAccountAPITestSuite) TestCloudAccountLifecycle() {
 	updatedData := updateBody["data"].(map[string]any)
 	s.Equal("Updated Primary AWS", updatedData["name"])
 
-	// 5. Delete Cloud Account (DELETE /api/v1/cloud-accounts/{id})
-	deleteResp, err := s.Http(s.T()).WithToken(s.token).Delete(fmt.Sprintf("/api/v1/cloud-accounts/%d", accountID), nil)
+	// 5. Delete Cloud Account (DELETE /v1/cloud-accounts/{id})
+	deleteResp, err := s.Http(s.T()).WithToken(s.token).Delete(fmt.Sprintf("/v1/cloud-accounts/%d", accountID), nil)
 	s.Require().NoError(err)
 	deleteResp.AssertOk()
 
 	// Verify it is no longer returned in list
-	listAfterResp, err := s.Http(s.T()).WithToken(s.token).Get("/api/v1/cloud-accounts")
+	listAfterResp, err := s.Http(s.T()).WithToken(s.token).Get("/v1/cloud-accounts")
 	s.Require().NoError(err)
 	listAfterBody, _ := listAfterResp.Json()
 	s.Empty(listAfterBody["data"].([]any))
@@ -175,7 +175,7 @@ func (s *CloudAccountAPITestSuite) TestCloudAccountTestConnection() {
 		"use_path_style":    true,
 	})
 
-	resp, err := s.Http(s.T()).WithToken(s.token).Post("/api/v1/cloud-accounts/test", bytes.NewBuffer(testPayload))
+	resp, err := s.Http(s.T()).WithToken(s.token).Post("/v1/cloud-accounts/test", bytes.NewBuffer(testPayload))
 	s.Require().NoError(err)
 	resp.AssertOk()
 
@@ -185,7 +185,7 @@ func (s *CloudAccountAPITestSuite) TestCloudAccountTestConnection() {
 	s.Equal("Kết nối thành công", jsonBody["message"])
 
 	// Test English locale via Accept-Language header
-	respEn, err := s.Http(s.T()).WithToken(s.token).WithHeader("Accept-Language", "en").Post("/api/v1/cloud-accounts/test", bytes.NewBuffer(testPayload))
+	respEn, err := s.Http(s.T()).WithToken(s.token).WithHeader("Accept-Language", "en").Post("/v1/cloud-accounts/test", bytes.NewBuffer(testPayload))
 	s.Require().NoError(err)
 	respEn.AssertOk()
 	jsonBodyEn, err := respEn.Json()

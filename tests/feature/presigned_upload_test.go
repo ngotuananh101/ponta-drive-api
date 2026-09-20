@@ -63,7 +63,7 @@ func (s *PresignedUploadTestSuite) SetupTest() {
 		"email":    s.user.Email,
 		"password": "password123",
 	})
-	resp, err := s.Http(s.T()).Post("/api/auth/login", bytes.NewBuffer(loginPayload))
+	resp, err := s.Http(s.T()).Post("/auth/login", bytes.NewBuffer(loginPayload))
 	s.Require().NoError(err)
 	resp.AssertOk()
 
@@ -104,7 +104,7 @@ func (s *PresignedUploadTestSuite) TearDownTest() {
 }
 
 func (s *PresignedUploadTestSuite) TestPresignedUploadFlow() {
-	// 1. Initiate Presigned Upload (POST /api/v1/drive/upload/presigned)
+	// 1. Initiate Presigned Upload (POST /v1/drive/upload/presigned)
 	initPayload, _ := json.Marshal(map[string]any{
 		"cloud_account_id": s.account.ID,
 		"file_name":        "tutorial.mp4",
@@ -112,7 +112,7 @@ func (s *PresignedUploadTestSuite) TestPresignedUploadFlow() {
 		"mime_type":        "video/mp4",
 	})
 
-	initResp, err := s.Http(s.T()).WithToken(s.token).Post("/api/v1/drive/upload/presigned", bytes.NewBuffer(initPayload))
+	initResp, err := s.Http(s.T()).WithToken(s.token).Post("/v1/drive/upload/presigned", bytes.NewBuffer(initPayload))
 	s.Require().NoError(err)
 	initResp.AssertStatus(http.StatusOK)
 
@@ -135,12 +135,12 @@ func (s *PresignedUploadTestSuite) TestPresignedUploadFlow() {
 	s.Equal("mp4", item.Extension)
 	s.Equal("tutorial.mp4", item.Name)
 
-	// 2. Complete Presigned Upload (POST /api/v1/drive/upload/presigned/complete)
+	// 2. Complete Presigned Upload (POST /v1/drive/upload/presigned/complete)
 	completePayload, _ := json.Marshal(map[string]any{
 		"item_uuid": itemUUID,
 	})
 
-	compResp, err := s.Http(s.T()).WithToken(s.token).Post("/api/v1/drive/upload/presigned/complete", bytes.NewBuffer(completePayload))
+	compResp, err := s.Http(s.T()).WithToken(s.token).Post("/v1/drive/upload/presigned/complete", bytes.NewBuffer(completePayload))
 	s.Require().NoError(err)
 	compResp.AssertStatus(http.StatusOK)
 

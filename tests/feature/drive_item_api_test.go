@@ -46,7 +46,7 @@ func (s *DriveItemAPITestSuite) SetupTest() {
 		"email":    s.user.Email,
 		"password": "password123",
 	})
-	resp, err := s.Http(s.T()).Post("/api/auth/login", bytes.NewBuffer(loginPayload))
+	resp, err := s.Http(s.T()).Post("/auth/login", bytes.NewBuffer(loginPayload))
 	s.Require().NoError(err)
 	resp.AssertOk()
 
@@ -82,12 +82,12 @@ func (s *DriveItemAPITestSuite) TearDownTest() {
 }
 
 func (s *DriveItemAPITestSuite) TestDriveItemLifecycle() {
-	// 1. Create a Folder (POST /api/v1/drive/items/folders)
+	// 1. Create a Folder (POST /v1/drive/items/folders)
 	createFolderPayload, _ := json.Marshal(map[string]any{
 		"cloud_account_id": s.account.ID,
 		"name":             "Work Documents",
 	})
-	createResp, err := s.Http(s.T()).WithToken(s.token).Post("/api/v1/drive/items/folders", bytes.NewBuffer(createFolderPayload))
+	createResp, err := s.Http(s.T()).WithToken(s.token).Post("/v1/drive/items/folders", bytes.NewBuffer(createFolderPayload))
 	s.Require().NoError(err)
 	createResp.AssertStatus(http.StatusCreated)
 
@@ -100,8 +100,8 @@ func (s *DriveItemAPITestSuite) TestDriveItemLifecycle() {
 	s.Equal("Work Documents", folderData["name"])
 	s.Equal(models.ItemTypeFolder, folderData["type"])
 
-	// 2. List Root Items (GET /api/v1/drive/items?cloud_account_id=...)
-	listResp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/api/v1/drive/items?cloud_account_id=%d", s.account.ID))
+	// 2. List Root Items (GET /v1/drive/items?cloud_account_id=...)
+	listResp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/drive/items?cloud_account_id=%d", s.account.ID))
 	s.Require().NoError(err)
 	listResp.AssertOk()
 
@@ -116,15 +116,15 @@ func (s *DriveItemAPITestSuite) TestDriveItemLifecycle() {
 		"parent_id":        folderID,
 		"name":             "Sub Projects",
 	})
-	childResp, err := s.Http(s.T()).WithToken(s.token).Post("/api/v1/drive/items/folders", bytes.NewBuffer(childFolderPayload))
+	childResp, err := s.Http(s.T()).WithToken(s.token).Post("/v1/drive/items/folders", bytes.NewBuffer(childFolderPayload))
 	s.Require().NoError(err)
 	childResp.AssertStatus(http.StatusCreated)
 
 	childBody, _ := childResp.Json()
 	childUUID := childBody["data"].(map[string]any)["uuid"].(string)
 
-	// 4. List items inside folder (GET /api/v1/drive/items?cloud_account_id=...&parent_id=...)
-	folderItemsResp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/api/v1/drive/items?cloud_account_id=%d&parent_id=%d", s.account.ID, folderID))
+	// 4. List items inside folder (GET /v1/drive/items?cloud_account_id=...&parent_id=...)
+	folderItemsResp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/drive/items?cloud_account_id=%d&parent_id=%d", s.account.ID, folderID))
 	s.Require().NoError(err)
 	folderItemsResp.AssertOk()
 
@@ -133,40 +133,40 @@ func (s *DriveItemAPITestSuite) TestDriveItemLifecycle() {
 	s.Len(folderChildren, 1)
 	s.Equal("Sub Projects", folderChildren[0].(map[string]any)["name"])
 
-	// 5. Get Item Details (GET /api/v1/drive/items/{uuid})
-	showResp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/api/v1/drive/items/%s", folderUUID))
+	// 5. Get Item Details (GET /v1/drive/items/{uuid})
+	showResp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/drive/items/%s", folderUUID))
 	s.Require().NoError(err)
 	showResp.AssertOk()
 
 	showBody, _ := showResp.Json()
 	s.Equal("Work Documents", showBody["data"].(map[string]any)["name"])
 
-	// 6. Rename / Move Item (PATCH /api/v1/drive/items/{uuid})
+	// 6. Rename / Move Item (PATCH /v1/drive/items/{uuid})
 	patchPayload, _ := json.Marshal(map[string]any{
 		"name": "Archived Documents",
 	})
-	patchResp, err := s.Http(s.T()).WithToken(s.token).WithHeader("Content-Type", "application/json").Patch(fmt.Sprintf("/api/v1/drive/items/%s", folderUUID), bytes.NewBuffer(patchPayload))
+	patchResp, err := s.Http(s.T()).WithToken(s.token).WithHeader("Content-Type", "application/json").Patch(fmt.Sprintf("/v1/drive/items/%s", folderUUID), bytes.NewBuffer(patchPayload))
 	s.Require().NoError(err)
 	patchResp.AssertOk()
 
 	patchBody, _ := patchResp.Json()
 	s.Equal("Archived Documents", patchBody["data"].(map[string]any)["name"])
 
-	// 7. Star Item (POST /api/v1/drive/items/{uuid}/star)
-	starResp, err := s.Http(s.T()).WithToken(s.token).Post(fmt.Sprintf("/api/v1/drive/items/%s/star", folderUUID), nil)
+	// 7. Star Item (POST /v1/drive/items/{uuid}/star)
+	starResp, err := s.Http(s.T()).WithToken(s.token).Post(fmt.Sprintf("/v1/drive/items/%s/star", folderUUID), nil)
 	s.Require().NoError(err)
 	starResp.AssertOk()
 
 	starBody, _ := starResp.Json()
 	s.True(starBody["data"].(map[string]any)["is_starred"].(bool))
 
-	// 8. Delete Item (DELETE /api/v1/drive/items/{uuid})
-	delResp, err := s.Http(s.T()).WithToken(s.token).Delete(fmt.Sprintf("/api/v1/drive/items/%s", childUUID), nil)
+	// 8. Delete Item (DELETE /v1/drive/items/{uuid})
+	delResp, err := s.Http(s.T()).WithToken(s.token).Delete(fmt.Sprintf("/v1/drive/items/%s", childUUID), nil)
 	s.Require().NoError(err)
 	delResp.AssertOk()
 
 	// Verify child folder is gone
-	delShowResp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/api/v1/drive/items/%s", childUUID))
+	delShowResp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/drive/items/%s", childUUID))
 	s.Require().NoError(err)
 	delShowResp.AssertStatus(http.StatusNotFound)
 }

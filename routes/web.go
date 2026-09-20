@@ -28,7 +28,7 @@ func Web() {
 	jwtAuth := &middleware.JwtAuth{}
 	setLocale := &middleware.SetLocale{}
 
-	facades.Route().Prefix("api").Middleware(setLocale).Group(func(router route.Router) {
+	facades.Route().Middleware(setLocale).Group(func(router route.Router) {
 		router.Get("/ping", func(ctx http.Context) http.Response {
 			return ctx.Response().Success().Json(http.Json{
 				"status":  "ok",

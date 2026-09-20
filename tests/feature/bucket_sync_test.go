@@ -81,7 +81,7 @@ func (s *BucketSyncTestSuite) SetupTest() {
 		"email":    s.user.Email,
 		"password": "password123",
 	})
-	resp, err := s.Http(s.T()).Post("/api/auth/login", bytes.NewBuffer(loginPayload))
+	resp, err := s.Http(s.T()).Post("/auth/login", bytes.NewBuffer(loginPayload))
 	s.Require().NoError(err)
 	resp.AssertOk()
 
@@ -120,8 +120,8 @@ func (s *BucketSyncTestSuite) TearDownTest() {
 }
 
 func (s *BucketSyncTestSuite) TestBucketSyncWorkflow() {
-	// 1. Trigger sync via POST /api/v1/cloud-accounts/{id}/sync
-	syncResp, err := s.Http(s.T()).WithToken(s.token).Post(fmt.Sprintf("/api/v1/cloud-accounts/%d/sync", s.account.ID), nil)
+	// 1. Trigger sync via POST /v1/cloud-accounts/{id}/sync
+	syncResp, err := s.Http(s.T()).WithToken(s.token).Post(fmt.Sprintf("/v1/cloud-accounts/%d/sync", s.account.ID), nil)
 	s.Require().NoError(err)
 	syncResp.AssertOk()
 
@@ -183,7 +183,7 @@ func (s *BucketSyncTestSuite) TestBucketSyncWorkflow() {
 	s.Equal("jpg", vacationChildren[0].Extension)
 
 	// 5. Test idempotency: re-running sync should not create duplicate items
-	syncResp2, err := s.Http(s.T()).WithToken(s.token).Post(fmt.Sprintf("/api/v1/cloud-accounts/%d/sync", s.account.ID), nil)
+	syncResp2, err := s.Http(s.T()).WithToken(s.token).Post(fmt.Sprintf("/v1/cloud-accounts/%d/sync", s.account.ID), nil)
 	s.Require().NoError(err)
 	syncResp2.AssertOk()
 

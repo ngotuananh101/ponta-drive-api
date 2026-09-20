@@ -103,7 +103,7 @@ func (s *MultipartUploadTestSuite) SetupTest() {
 		"email":    s.user.Email,
 		"password": "password123",
 	})
-	resp, err := s.Http(s.T()).Post("/api/auth/login", bytes.NewBuffer(loginPayload))
+	resp, err := s.Http(s.T()).Post("/auth/login", bytes.NewBuffer(loginPayload))
 	s.Require().NoError(err)
 	resp.AssertOk()
 
@@ -145,7 +145,7 @@ func (s *MultipartUploadTestSuite) TearDownTest() {
 }
 
 func (s *MultipartUploadTestSuite) TestMultipartUploadFullCycle() {
-	// 1. Init Multipart Upload (POST /api/v1/drive/upload/multipart/init)
+	// 1. Init Multipart Upload (POST /v1/drive/upload/multipart/init)
 	initPayload, _ := json.Marshal(map[string]any{
 		"cloud_account_id": s.account.ID,
 		"file_name":        "archive.zip",
@@ -154,7 +154,7 @@ func (s *MultipartUploadTestSuite) TestMultipartUploadFullCycle() {
 		"chunk_size":       5242880,
 	})
 
-	initResp, err := s.Http(s.T()).WithToken(s.token).Post("/api/v1/drive/upload/multipart/init", bytes.NewBuffer(initPayload))
+	initResp, err := s.Http(s.T()).WithToken(s.token).Post("/v1/drive/upload/multipart/init", bytes.NewBuffer(initPayload))
 	s.Require().NoError(err)
 	initResp.AssertStatus(http.StatusOK)
 
@@ -166,7 +166,7 @@ func (s *MultipartUploadTestSuite) TestMultipartUploadFullCycle() {
 	s.Equal("mock-upload-id-999", initData["upload_id"])
 	s.Equal(float64(3), initData["total_parts"])
 
-	// 2. Upload 3 Parts (POST /api/v1/drive/upload/multipart/part)
+	// 2. Upload 3 Parts (POST /v1/drive/upload/multipart/part)
 	for partNum := 1; partNum <= 3; partNum++ {
 		var body bytes.Buffer
 		writer := multipart.NewWriter(&body)
@@ -182,7 +182,7 @@ func (s *MultipartUploadTestSuite) TestMultipartUploadFullCycle() {
 
 		partResp, err := s.Http(s.T()).WithToken(s.token).
 			WithHeader("Content-Type", writer.FormDataContentType()).
-			Post("/api/v1/drive/upload/multipart/part", &body)
+			Post("/v1/drive/upload/multipart/part", &body)
 		s.Require().NoError(err)
 		partResp.AssertStatus(http.StatusOK)
 
@@ -193,12 +193,12 @@ func (s *MultipartUploadTestSuite) TestMultipartUploadFullCycle() {
 		s.Equal(fmt.Sprintf("mock-part-%d-etag", partNum), partResult["etag"])
 	}
 
-	// 3. Complete Multipart Upload (POST /api/v1/drive/upload/multipart/complete)
+	// 3. Complete Multipart Upload (POST /v1/drive/upload/multipart/complete)
 	completePayload, _ := json.Marshal(map[string]any{
 		"session_id": sessionID,
 	})
 
-	compResp, err := s.Http(s.T()).WithToken(s.token).Post("/api/v1/drive/upload/multipart/complete", bytes.NewBuffer(completePayload))
+	compResp, err := s.Http(s.T()).WithToken(s.token).Post("/v1/drive/upload/multipart/complete", bytes.NewBuffer(completePayload))
 	s.Require().NoError(err)
 	compResp.AssertStatus(http.StatusOK)
 
@@ -230,18 +230,18 @@ func (s *MultipartUploadTestSuite) TestMultipartUploadAbort() {
 		"size":             10485760,
 	})
 
-	initResp, err := s.Http(s.T()).WithToken(s.token).Post("/api/v1/drive/upload/multipart/init", bytes.NewBuffer(initPayload))
+	initResp, err := s.Http(s.T()).WithToken(s.token).Post("/v1/drive/upload/multipart/init", bytes.NewBuffer(initPayload))
 	s.Require().NoError(err)
 	initResp.AssertStatus(http.StatusOK)
 
 	initBody, _ := initResp.Json()
 	sessionID := initBody["data"].(map[string]any)["session_id"].(string)
 
-	// 2. Abort Multipart Upload (POST /api/v1/drive/upload/multipart/abort)
+	// 2. Abort Multipart Upload (POST /v1/drive/upload/multipart/abort)
 	abortPayload, _ := json.Marshal(map[string]any{
 		"session_id": sessionID,
 	})
-	abortResp, err := s.Http(s.T()).WithToken(s.token).Post("/api/v1/drive/upload/multipart/abort", bytes.NewBuffer(abortPayload))
+	abortResp, err := s.Http(s.T()).WithToken(s.token).Post("/v1/drive/upload/multipart/abort", bytes.NewBuffer(abortPayload))
 	s.Require().NoError(err)
 	abortResp.AssertStatus(http.StatusOK)
 
