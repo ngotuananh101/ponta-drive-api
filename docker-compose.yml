@@ -12,6 +12,5 @@ services:
 
 networks:
   bridge-network:
-    # Sử dụng mạng bridge đã tồn tại (bên ngoài Docker) — sử dụng external: true
-    # Đảm bảo mạng này tồn tại trước khi khởi chạy: docker network ls
+    name: bridge
     external: true
