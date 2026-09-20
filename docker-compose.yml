@@ -9,3 +9,9 @@ services:
     ports:
       - "${APP_HOST}:${APP_PORT}:${APP_PORT}"
     restart: always
+    networks:
+      - ponta_network
+
+networks:
+  ponta_network:
+    external: true
