@@ -7,10 +7,9 @@ services:
     ports:
       - "${APP_HOST}:${APP_PORT}:${APP_PORT}"
     networks:
-      - bridge-network
+      - bridge
     restart: always
 
 networks:
-  bridge-network:
-    name: bridge
+  bridge:
     external: true
