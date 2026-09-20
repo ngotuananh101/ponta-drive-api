@@ -182,5 +182,14 @@ func (s *CloudAccountAPITestSuite) TestCloudAccountTestConnection() {
 	jsonBody, err := resp.Json()
 	s.Require().NoError(err)
 	s.Equal("ok", jsonBody["status"])
-	s.Equal("Connection successful", jsonBody["message"])
+	s.Equal("Kết nối thành công", jsonBody["message"])
+
+	// Test English locale via Accept-Language header
+	respEn, err := s.Http(s.T()).WithToken(s.token).WithHeader("Accept-Language", "en").Post("/api/v1/cloud-accounts/test", bytes.NewBuffer(testPayload))
+	s.Require().NoError(err)
+	respEn.AssertOk()
+	jsonBodyEn, err := respEn.Json()
+	s.Require().NoError(err)
+	s.Equal("ok", jsonBodyEn["status"])
+	s.Equal("Connection successful", jsonBodyEn["message"])
 }

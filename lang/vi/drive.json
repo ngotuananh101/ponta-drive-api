@@ -1,0 +1,6 @@
+{
+  "cloud_account_required": "cloud_account_id là bắt buộc",
+  "list_failed": "Không thể lấy danh sách tệp tin và thư mục",
+  "item_not_found": "Không tìm thấy mục trong ổ đĩa",
+  "item_deleted": "Mục đã được xóa thành công"
+}

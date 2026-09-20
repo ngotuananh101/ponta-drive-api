@@ -31,7 +31,7 @@ func (c *DriveItemController) Index(ctx http.Context) http.Response {
 	if !ok || user.ID == 0 {
 		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
 			"status":  "error",
-			"message": "Unauthorized",
+			"message": facades.Lang(ctx).Get("common.unauthorized"),
 		})
 	}
 
@@ -48,7 +48,7 @@ func (c *DriveItemController) Index(ctx http.Context) http.Response {
 		} else {
 			return ctx.Response().Json(http.StatusBadRequest, http.Json{
 				"status":  "error",
-				"message": "cloud_account_id is required",
+				"message": facades.Lang(ctx).Get("drive.cloud_account_required"),
 			})
 		}
 	}
@@ -71,7 +71,7 @@ func (c *DriveItemController) Index(ctx http.Context) http.Response {
 	if err != nil {
 		return ctx.Response().Json(http.StatusInternalServerError, http.Json{
 			"status":  "error",
-			"message": "Failed to list items: " + err.Error(),
+			"message": facades.Lang(ctx).Get("drive.list_failed") + ": " + err.Error(),
 		})
 	}
 
@@ -92,7 +92,7 @@ func (c *DriveItemController) StoreFolder(ctx http.Context) http.Response {
 	if !ok || user.ID == 0 {
 		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
 			"status":  "error",
-			"message": "Unauthorized",
+			"message": facades.Lang(ctx).Get("common.unauthorized"),
 		})
 	}
 
@@ -132,7 +132,7 @@ func (c *DriveItemController) Show(ctx http.Context) http.Response {
 	if !ok || user.ID == 0 {
 		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
 			"status":  "error",
-			"message": "Unauthorized",
+			"message": facades.Lang(ctx).Get("common.unauthorized"),
 		})
 	}
 
@@ -140,7 +140,7 @@ func (c *DriveItemController) Show(ctx http.Context) http.Response {
 	if itemUUID == "" {
 		return ctx.Response().Json(http.StatusBadRequest, http.Json{
 			"status":  "error",
-			"message": "Item UUID is required",
+			"message": facades.Lang(ctx).Get("common.uuid_required"),
 		})
 	}
 
@@ -148,7 +148,7 @@ func (c *DriveItemController) Show(ctx http.Context) http.Response {
 	if err != nil {
 		return ctx.Response().Json(http.StatusNotFound, http.Json{
 			"status":  "error",
-			"message": "Item not found",
+			"message": facades.Lang(ctx).Get("drive.item_not_found"),
 		})
 	}
 
@@ -164,7 +164,7 @@ func (c *DriveItemController) Update(ctx http.Context) http.Response {
 	if !ok || user.ID == 0 {
 		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
 			"status":  "error",
-			"message": "Unauthorized",
+			"message": facades.Lang(ctx).Get("common.unauthorized"),
 		})
 	}
 
@@ -172,7 +172,7 @@ func (c *DriveItemController) Update(ctx http.Context) http.Response {
 	if itemUUID == "" {
 		return ctx.Response().Json(http.StatusBadRequest, http.Json{
 			"status":  "error",
-			"message": "Item UUID is required",
+			"message": facades.Lang(ctx).Get("common.uuid_required"),
 		})
 	}
 
@@ -217,7 +217,7 @@ func (c *DriveItemController) Star(ctx http.Context) http.Response {
 	if !ok || user.ID == 0 {
 		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
 			"status":  "error",
-			"message": "Unauthorized",
+			"message": facades.Lang(ctx).Get("common.unauthorized"),
 		})
 	}
 
@@ -225,7 +225,7 @@ func (c *DriveItemController) Star(ctx http.Context) http.Response {
 	if itemUUID == "" {
 		return ctx.Response().Json(http.StatusBadRequest, http.Json{
 			"status":  "error",
-			"message": "Item UUID is required",
+			"message": facades.Lang(ctx).Get("common.uuid_required"),
 		})
 	}
 
@@ -249,7 +249,7 @@ func (c *DriveItemController) Destroy(ctx http.Context) http.Response {
 	if !ok || user.ID == 0 {
 		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
 			"status":  "error",
-			"message": "Unauthorized",
+			"message": facades.Lang(ctx).Get("common.unauthorized"),
 		})
 	}
 
@@ -257,7 +257,7 @@ func (c *DriveItemController) Destroy(ctx http.Context) http.Response {
 	if itemUUID == "" {
 		return ctx.Response().Json(http.StatusBadRequest, http.Json{
 			"status":  "error",
-			"message": "Item UUID is required",
+			"message": facades.Lang(ctx).Get("common.uuid_required"),
 		})
 	}
 
@@ -273,7 +273,7 @@ func (c *DriveItemController) Destroy(ctx http.Context) http.Response {
 
 	return ctx.Response().Success().Json(http.Json{
 		"status":  "ok",
-		"message": "Item deleted successfully",
+		"message": facades.Lang(ctx).Get("drive.item_deleted"),
 	})
 }
 
@@ -283,7 +283,7 @@ func (c *DriveItemController) Download(ctx http.Context) http.Response {
 	if !ok || user.ID == 0 {
 		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
 			"status":  "error",
-			"message": "Unauthorized",
+			"message": facades.Lang(ctx).Get("common.unauthorized"),
 		})
 	}
 
@@ -291,7 +291,7 @@ func (c *DriveItemController) Download(ctx http.Context) http.Response {
 	if itemUUID == "" {
 		return ctx.Response().Json(http.StatusBadRequest, http.Json{
 			"status":  "error",
-			"message": "Item UUID is required",
+			"message": facades.Lang(ctx).Get("common.uuid_required"),
 		})
 	}
 

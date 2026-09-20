@@ -1,0 +1,5 @@
+{
+  "unauthorized": "Unauthorized",
+  "invalid_account_id": "Invalid account ID",
+  "uuid_required": "Item UUID is required"
+}

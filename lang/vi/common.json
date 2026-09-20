@@ -1,0 +1,5 @@
+{
+  "unauthorized": "Chưa xác thực",
+  "invalid_account_id": "ID tài khoản không hợp lệ",
+  "uuid_required": "UUID của mục là bắt buộc"
+}

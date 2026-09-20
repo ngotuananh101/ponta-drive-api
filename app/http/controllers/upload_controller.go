@@ -7,6 +7,7 @@ import (
 
 	"github.com/goravel/framework/contracts/http"
 
+	"ponta_drive/app/facades"
 	"ponta_drive/app/http/requests"
 	"ponta_drive/app/models"
 	"ponta_drive/app/services"
@@ -28,7 +29,7 @@ func (c *UploadController) InitiatePresigned(ctx http.Context) http.Response {
 	if !ok || user.ID == 0 {
 		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
 			"status":  "error",
-			"message": "Unauthorized",
+			"message": facades.Lang(ctx).Get("common.unauthorized"),
 		})
 	}
 
@@ -83,7 +84,7 @@ func (c *UploadController) CompletePresigned(ctx http.Context) http.Response {
 	if !ok || user.ID == 0 {
 		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
 			"status":  "error",
-			"message": "Unauthorized",
+			"message": facades.Lang(ctx).Get("common.unauthorized"),
 		})
 	}
 
@@ -123,7 +124,7 @@ func (c *UploadController) InitMultipart(ctx http.Context) http.Response {
 	if !ok || user.ID == 0 {
 		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
 			"status":  "error",
-			"message": "Unauthorized",
+			"message": facades.Lang(ctx).Get("common.unauthorized"),
 		})
 	}
 
@@ -178,7 +179,7 @@ func (c *UploadController) UploadPart(ctx http.Context) http.Response {
 	if !ok || user.ID == 0 {
 		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
 			"status":  "error",
-			"message": "Unauthorized",
+			"message": facades.Lang(ctx).Get("common.unauthorized"),
 		})
 	}
 
@@ -189,7 +190,7 @@ func (c *UploadController) UploadPart(ctx http.Context) http.Response {
 	if sessionID == "" {
 		return ctx.Response().Json(http.StatusBadRequest, http.Json{
 			"status":  "error",
-			"message": "session_id is required",
+			"message": facades.Lang(ctx).Get("upload.session_id_required"),
 		})
 	}
 
@@ -201,7 +202,7 @@ func (c *UploadController) UploadPart(ctx http.Context) http.Response {
 	if err != nil || partNum <= 0 {
 		return ctx.Response().Json(http.StatusBadRequest, http.Json{
 			"status":  "error",
-			"message": "valid part_number is required",
+			"message": facades.Lang(ctx).Get("upload.part_number_required"),
 		})
 	}
 
@@ -222,7 +223,7 @@ func (c *UploadController) UploadPart(ctx http.Context) http.Response {
 	if reader == nil || partSize <= 0 {
 		return ctx.Response().Json(http.StatusBadRequest, http.Json{
 			"status":  "error",
-			"message": "missing or empty chunk payload",
+			"message": facades.Lang(ctx).Get("upload.payload_missing"),
 		})
 	}
 
@@ -250,7 +251,7 @@ func (c *UploadController) CompleteMultipart(ctx http.Context) http.Response {
 	if !ok || user.ID == 0 {
 		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
 			"status":  "error",
-			"message": "Unauthorized",
+			"message": facades.Lang(ctx).Get("common.unauthorized"),
 		})
 	}
 
@@ -290,7 +291,7 @@ func (c *UploadController) AbortMultipart(ctx http.Context) http.Response {
 	if !ok || user.ID == 0 {
 		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
 			"status":  "error",
-			"message": "Unauthorized",
+			"message": facades.Lang(ctx).Get("common.unauthorized"),
 		})
 	}
 
@@ -301,7 +302,7 @@ func (c *UploadController) AbortMultipart(ctx http.Context) http.Response {
 	if sessionID == "" {
 		return ctx.Response().Json(http.StatusBadRequest, http.Json{
 			"status":  "error",
-			"message": "session_id is required",
+			"message": facades.Lang(ctx).Get("upload.session_id_required"),
 		})
 	}
 
@@ -315,7 +316,7 @@ func (c *UploadController) AbortMultipart(ctx http.Context) http.Response {
 
 	return ctx.Response().Success().Json(http.Json{
 		"status":  "ok",
-		"message": "Multipart upload aborted successfully",
+		"message": facades.Lang(ctx).Get("upload.aborted"),
 	})
 }
 

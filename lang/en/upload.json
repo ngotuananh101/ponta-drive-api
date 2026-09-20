@@ -1,0 +1,6 @@
+{
+  "session_id_required": "session_id is required",
+  "part_number_required": "valid part_number is required",
+  "payload_missing": "missing or empty chunk payload",
+  "aborted": "Multipart upload aborted successfully"
+}

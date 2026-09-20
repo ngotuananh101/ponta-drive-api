@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 
 	"github.com/goravel/framework/contracts/http"
@@ -34,7 +33,7 @@ func (c *CloudAccountController) Index(ctx http.Context) http.Response {
 	if !ok || user.ID == 0 {
 		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
 			"status":  "error",
-			"message": "Unauthorized",
+			"message": facades.Lang(ctx).Get("common.unauthorized"),
 		})
 	}
 
@@ -46,7 +45,7 @@ func (c *CloudAccountController) Index(ctx http.Context) http.Response {
 	if err != nil {
 		return ctx.Response().Json(http.StatusInternalServerError, http.Json{
 			"status":  "error",
-			"message": "Failed to fetch cloud accounts",
+			"message": facades.Lang(ctx).Get("cloud.fetch_failed"),
 		})
 	}
 
@@ -93,7 +92,7 @@ func (c *CloudAccountController) Test(ctx http.Context) http.Response {
 	if err != nil {
 		return ctx.Response().Json(http.StatusBadRequest, http.Json{
 			"status":  "error",
-			"message": fmt.Sprintf("Failed to initialize storage driver: %s", err.Error()),
+			"message": facades.Lang(ctx).Get("cloud.driver_init_failed"),
 		})
 	}
 
@@ -102,13 +101,13 @@ func (c *CloudAccountController) Test(ctx http.Context) http.Response {
 	if err != nil {
 		return ctx.Response().Json(http.StatusBadRequest, http.Json{
 			"status":  "error",
-			"message": fmt.Sprintf("Connection test failed: %s", err.Error()),
+			"message": facades.Lang(ctx).Get("cloud.connection_test_failed"),
 		})
 	}
 
 	return ctx.Response().Success().Json(http.Json{
 		"status":  "ok",
-		"message": "Connection successful",
+		"message": facades.Lang(ctx).Get("cloud.connection_success"),
 	})
 }
 
@@ -118,7 +117,7 @@ func (c *CloudAccountController) Store(ctx http.Context) http.Response {
 	if !ok || user.ID == 0 {
 		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
 			"status":  "error",
-			"message": "Unauthorized",
+			"message": facades.Lang(ctx).Get("common.unauthorized"),
 		})
 	}
 
@@ -152,7 +151,7 @@ func (c *CloudAccountController) Store(ctx http.Context) http.Response {
 	if err != nil {
 		return ctx.Response().Json(http.StatusInternalServerError, http.Json{
 			"status":  "error",
-			"message": "Failed to encrypt credentials",
+			"message": facades.Lang(ctx).Get("cloud.encrypt_failed"),
 		})
 	}
 
@@ -176,7 +175,7 @@ func (c *CloudAccountController) Store(ctx http.Context) http.Response {
 	if err := facades.Orm().Query().Create(&account); err != nil {
 		return ctx.Response().Json(http.StatusInternalServerError, http.Json{
 			"status":  "error",
-			"message": "Failed to save cloud account: " + err.Error(),
+			"message": facades.Lang(ctx).Get("cloud.save_failed"),
 		})
 	}
 
@@ -192,7 +191,7 @@ func (c *CloudAccountController) Show(ctx http.Context) http.Response {
 	if !ok || user.ID == 0 {
 		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
 			"status":  "error",
-			"message": "Unauthorized",
+			"message": facades.Lang(ctx).Get("common.unauthorized"),
 		})
 	}
 
@@ -200,7 +199,7 @@ func (c *CloudAccountController) Show(ctx http.Context) http.Response {
 	if id <= 0 {
 		return ctx.Response().Json(http.StatusBadRequest, http.Json{
 			"status":  "error",
-			"message": "Invalid account ID",
+			"message": facades.Lang(ctx).Get("common.invalid_account_id"),
 		})
 	}
 
@@ -212,7 +211,7 @@ func (c *CloudAccountController) Show(ctx http.Context) http.Response {
 	if err != nil || account.ID == 0 {
 		return ctx.Response().Json(http.StatusNotFound, http.Json{
 			"status":  "error",
-			"message": "Cloud account not found",
+			"message": facades.Lang(ctx).Get("cloud.not_found"),
 		})
 	}
 
@@ -228,7 +227,7 @@ func (c *CloudAccountController) Update(ctx http.Context) http.Response {
 	if !ok || user.ID == 0 {
 		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
 			"status":  "error",
-			"message": "Unauthorized",
+			"message": facades.Lang(ctx).Get("common.unauthorized"),
 		})
 	}
 
@@ -236,7 +235,7 @@ func (c *CloudAccountController) Update(ctx http.Context) http.Response {
 	if id <= 0 {
 		return ctx.Response().Json(http.StatusBadRequest, http.Json{
 			"status":  "error",
-			"message": "Invalid account ID",
+			"message": facades.Lang(ctx).Get("common.invalid_account_id"),
 		})
 	}
 
@@ -248,7 +247,7 @@ func (c *CloudAccountController) Update(ctx http.Context) http.Response {
 	if err != nil || account.ID == 0 {
 		return ctx.Response().Json(http.StatusNotFound, http.Json{
 			"status":  "error",
-			"message": "Cloud account not found",
+			"message": facades.Lang(ctx).Get("cloud.not_found"),
 		})
 	}
 
@@ -319,7 +318,7 @@ func (c *CloudAccountController) Update(ctx http.Context) http.Response {
 	if err := facades.Orm().Query().Save(&account); err != nil {
 		return ctx.Response().Json(http.StatusInternalServerError, http.Json{
 			"status":  "error",
-			"message": "Failed to update cloud account",
+			"message": facades.Lang(ctx).Get("cloud.update_failed"),
 		})
 	}
 
@@ -337,7 +336,7 @@ func (c *CloudAccountController) Destroy(ctx http.Context) http.Response {
 	if !ok || user.ID == 0 {
 		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
 			"status":  "error",
-			"message": "Unauthorized",
+			"message": facades.Lang(ctx).Get("common.unauthorized"),
 		})
 	}
 
@@ -345,7 +344,7 @@ func (c *CloudAccountController) Destroy(ctx http.Context) http.Response {
 	if id <= 0 {
 		return ctx.Response().Json(http.StatusBadRequest, http.Json{
 			"status":  "error",
-			"message": "Invalid account ID",
+			"message": facades.Lang(ctx).Get("common.invalid_account_id"),
 		})
 	}
 
@@ -357,14 +356,14 @@ func (c *CloudAccountController) Destroy(ctx http.Context) http.Response {
 	if err != nil || account.ID == 0 {
 		return ctx.Response().Json(http.StatusNotFound, http.Json{
 			"status":  "error",
-			"message": "Cloud account not found",
+			"message": facades.Lang(ctx).Get("cloud.not_found"),
 		})
 	}
 
 	if _, err := facades.Orm().Query().Delete(&account); err != nil {
 		return ctx.Response().Json(http.StatusInternalServerError, http.Json{
 			"status":  "error",
-			"message": "Failed to delete cloud account",
+			"message": facades.Lang(ctx).Get("cloud.delete_failed"),
 		})
 	}
 
@@ -372,7 +371,7 @@ func (c *CloudAccountController) Destroy(ctx http.Context) http.Response {
 
 	return ctx.Response().Success().Json(http.Json{
 		"status":  "ok",
-		"message": "Cloud account deleted successfully",
+		"message": facades.Lang(ctx).Get("cloud.deleted"),
 	})
 }
 
@@ -382,7 +381,7 @@ func (c *CloudAccountController) Sync(ctx http.Context) http.Response {
 	if !ok || user.ID == 0 {
 		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
 			"status":  "error",
-			"message": "Unauthorized",
+			"message": facades.Lang(ctx).Get("common.unauthorized"),
 		})
 	}
 
@@ -390,7 +389,7 @@ func (c *CloudAccountController) Sync(ctx http.Context) http.Response {
 	if id <= 0 {
 		return ctx.Response().Json(http.StatusBadRequest, http.Json{
 			"status":  "error",
-			"message": "Invalid account ID",
+			"message": facades.Lang(ctx).Get("common.invalid_account_id"),
 		})
 	}
 
@@ -402,7 +401,7 @@ func (c *CloudAccountController) Sync(ctx http.Context) http.Response {
 	if err != nil || account.ID == 0 {
 		return ctx.Response().Json(http.StatusNotFound, http.Json{
 			"status":  "error",
-			"message": "Cloud account not found",
+			"message": facades.Lang(ctx).Get("cloud.not_found"),
 		})
 	}
 
@@ -429,6 +428,6 @@ func (c *CloudAccountController) Sync(ctx http.Context) http.Response {
 
 	return ctx.Response().Success().Json(http.Json{
 		"status":  "ok",
-		"message": "Bucket synchronization initiated",
+		"message": facades.Lang(ctx).Get("cloud.sync_started"),
 	})
 }
