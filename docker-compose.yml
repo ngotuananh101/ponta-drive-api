@@ -1,5 +1,6 @@
 services:
-  goravel:
+  api:
+    container_name: ponta_drive_api
     build:
       context: .
     env_file:
