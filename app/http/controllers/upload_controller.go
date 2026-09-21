@@ -8,6 +8,7 @@ import (
 	"github.com/goravel/framework/contracts/http"
 
 	"ponta_drive/app/facades"
+	"ponta_drive/app/http/helpers"
 	"ponta_drive/app/http/requests"
 	"ponta_drive/app/models"
 	"ponta_drive/app/services"
@@ -111,6 +112,9 @@ func (c *UploadController) CompletePresigned(ctx http.Context) http.Response {
 			"message": err.Error(),
 		})
 	}
+
+	activityService := services.NewActivityService()
+	_ = activityService.Log(user.ID, item.CloudAccountID, "uploaded", item.Name, &item.UUID, helpers.GetClientIP(ctx), helpers.GetUserAgent(ctx), map[string]any{"size": item.Size, "mime": item.MimeType})
 
 	return ctx.Response().Success().Json(http.Json{
 		"status": "ok",
@@ -278,6 +282,9 @@ func (c *UploadController) CompleteMultipart(ctx http.Context) http.Response {
 			"message": err.Error(),
 		})
 	}
+
+	activityService := services.NewActivityService()
+	_ = activityService.Log(user.ID, item.CloudAccountID, "uploaded", item.Name, &item.UUID, helpers.GetClientIP(ctx), helpers.GetUserAgent(ctx), map[string]any{"size": item.Size, "mime": item.MimeType})
 
 	return ctx.Response().Success().Json(http.Json{
 		"status": "ok",
