@@ -10,6 +10,7 @@ import (
 	"github.com/goravel/framework/contracts/http"
 
 	"ponta_drive/app/facades"
+	"ponta_drive/app/http/helpers"
 	"ponta_drive/app/http/requests"
 	"ponta_drive/app/models"
 	"ponta_drive/app/services"
@@ -120,6 +121,9 @@ func (c *DriveItemController) StoreFolder(ctx http.Context) http.Response {
 		})
 	}
 
+	activityService := services.NewActivityService()
+	_ = activityService.Log(user.ID, folder.CloudAccountID, "created_folder", folder.Name, &folder.UUID, helpers.GetClientIP(ctx), helpers.GetUserAgent(ctx), nil)
+
 	return ctx.Response().Json(http.StatusCreated, http.Json{
 		"status": "ok",
 		"data":   folder.ToResponse(),
@@ -197,12 +201,25 @@ func (c *DriveItemController) Update(ctx http.Context) http.Response {
 		name = ctx.Request().Input("name")
 	}
 
+	// Capture the current name so a rename can be detected after the update:
+	// UpdateItem mutates and returns the same pointer, so item.Name afterwards
+	// already holds the new name.
+	previousName := ""
+	if existing, fetchErr := c.service.GetItemByUUID(context.Background(), user.ID, itemUUID); fetchErr == nil {
+		previousName = existing.Name
+	}
+
 	item, err := c.service.UpdateItem(context.Background(), user.ID, itemUUID, name, req.ParentID)
 	if err != nil {
 		return ctx.Response().Json(http.StatusBadRequest, http.Json{
 			"status":  "error",
 			"message": err.Error(),
 		})
+	}
+
+	if name != "" && name != previousName {
+		activityService := services.NewActivityService()
+		_ = activityService.Log(user.ID, item.CloudAccountID, "renamed", fmt.Sprintf("%s → %s", previousName, name), &item.UUID, helpers.GetClientIP(ctx), helpers.GetUserAgent(ctx), nil)
 	}
 
 	return ctx.Response().Success().Json(http.Json{
@@ -263,12 +280,23 @@ func (c *DriveItemController) Destroy(ctx http.Context) http.Response {
 
 	permanent := ctx.Request().QueryBool("permanent", false)
 
+	item, _ := c.service.GetItemByUUID(context.Background(), user.ID, itemUUID)
+
 	err := c.service.DeleteItem(context.Background(), user.ID, itemUUID, permanent)
 	if err != nil {
 		return ctx.Response().Json(http.StatusBadRequest, http.Json{
 			"status":  "error",
 			"message": err.Error(),
 		})
+	}
+
+	if item != nil {
+		activityService := services.NewActivityService()
+		action := "deleted"
+		if permanent {
+			action = "permanently_deleted"
+		}
+		_ = activityService.Log(user.ID, item.CloudAccountID, action, item.Name, &item.UUID, helpers.GetClientIP(ctx), helpers.GetUserAgent(ctx), map[string]any{"permanent": permanent})
 	}
 
 	return ctx.Response().Success().Json(http.Json{
