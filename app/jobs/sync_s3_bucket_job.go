@@ -62,18 +62,33 @@ func (j *SyncS3BucketJob) Handle(args ...any) error {
 		}
 	}
 
+	var itemsCount int
+	var scanErr error
+
+	// Always release the account from the "syncing" state, even when the scan
+	// fails, otherwise the account stays stuck at "syncing" forever.
+	defer func() {
+		updates := map[string]any{"sync_status": "idle"}
+		if scanErr != nil {
+			updates["sync_status"] = "error"
+		} else {
+			updates["last_synced_at"] = time.Now()
+		}
+		_, _ = facades.Orm().Query().Where("id", cloudAccountID).Update(updates)
+
+		if scanErr != nil {
+			return
+		}
+
+		var account models.CloudAccount
+		_ = facades.Orm().Query().Where("id", cloudAccountID).First(&account)
+
+		activityService := services.NewActivityService()
+		_ = activityService.Log(userID, cloudAccountID, "synced", account.Name, nil, "system", "Queue Worker", map[string]any{"items_count": itemsCount})
+	}()
+
 	service := services.NewCloudDriveService()
-	itemsCount, err := service.ScanBucket(context.Background(), userID, cloudAccountID, parentID)
-	if err != nil {
-		return err
-	}
+	itemsCount, scanErr = service.ScanBucket(context.Background(), userID, cloudAccountID, parentID)
 
-	var account models.CloudAccount
-	_ = facades.Orm().Query().Where("id", cloudAccountID).First(&account)
-
-	_, _ = facades.Orm().Query().Where("id", cloudAccountID).Update(map[string]any{"sync_status": "idle", "last_synced_at": time.Now()})
-	activityService := services.NewActivityService()
-	_ = activityService.Log(userID, cloudAccountID, "synced", account.Name, nil, "system", "Queue Worker", map[string]any{"items_count": itemsCount})
-
-	return nil
+	return scanErr
 }

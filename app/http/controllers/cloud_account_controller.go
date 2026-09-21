@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"strconv"
+	"time"
 
 	"github.com/goravel/framework/contracts/http"
 	"github.com/goravel/framework/contracts/queue"
@@ -429,6 +430,8 @@ func (c *CloudAccountController) Sync(ctx http.Context) http.Response {
 		// Fallback: run scan directly
 		driveService := services.NewCloudDriveService()
 		_, _ = driveService.ScanBucket(context.Background(), user.ID, account.ID, parentID)
+		// The job never ran, so release the account from the "syncing" state here.
+		_, _ = facades.Orm().Query().Where("id", account.ID).Update(map[string]any{"sync_status": "idle", "last_synced_at": time.Now()})
 	}
 
 	return ctx.Response().Success().Json(http.Json{
