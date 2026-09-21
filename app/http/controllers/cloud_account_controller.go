@@ -8,6 +8,7 @@ import (
 	"github.com/goravel/framework/contracts/queue"
 
 	"ponta_drive/app/facades"
+	"ponta_drive/app/http/helpers"
 	"ponta_drive/app/http/requests"
 	"ponta_drive/app/jobs"
 	"ponta_drive/app/models"
@@ -412,6 +413,10 @@ func (c *CloudAccountController) Sync(ctx http.Context) http.Response {
 			parentID = &uPid
 		}
 	}
+
+	_, _ = facades.Orm().Query().Where("id", account.ID).Update(map[string]any{"sync_status": "syncing"})
+	activityService := services.NewActivityService()
+	_ = activityService.Log(user.ID, account.ID, "sync_started", account.Name, nil, helpers.GetClientIP(ctx), helpers.GetUserAgent(ctx), nil)
 
 	// Dispatch sync job via Queue facade
 	job := &jobs.SyncS3BucketJob{}

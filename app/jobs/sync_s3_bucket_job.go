@@ -3,7 +3,10 @@ package jobs
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"ponta_drive/app/facades"
+	"ponta_drive/app/models"
 	"ponta_drive/app/services"
 )
 
@@ -60,6 +63,17 @@ func (j *SyncS3BucketJob) Handle(args ...any) error {
 	}
 
 	service := services.NewCloudDriveService()
-	_, err := service.ScanBucket(context.Background(), userID, cloudAccountID, parentID)
-	return err
+	itemsCount, err := service.ScanBucket(context.Background(), userID, cloudAccountID, parentID)
+	if err != nil {
+		return err
+	}
+
+	var account models.CloudAccount
+	_ = facades.Orm().Query().Where("id", cloudAccountID).First(&account)
+
+	_, _ = facades.Orm().Query().Where("id", cloudAccountID).Update(map[string]any{"sync_status": "idle", "last_synced_at": time.Now()})
+	activityService := services.NewActivityService()
+	_ = activityService.Log(userID, cloudAccountID, "synced", account.Name, nil, "system", "Queue Worker", map[string]any{"items_count": itemsCount})
+
+	return nil
 }
