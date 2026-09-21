@@ -83,7 +83,11 @@ mv main.new main
 # 7. Set lại quyền thực thi cho deploy.sh
 chmod +x deploy.sh
 
-# 8. Triển khai với docker compose
+# 8. Tạo thư mục /storage/logs nếu chưa có
+mkdir -p storage/logs
+chmod 777 storage/logs
+
+# 9. Triển khai với docker compose
 docker-compose up -d --build
 
 log_success "========================================================"
