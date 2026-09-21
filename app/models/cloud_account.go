@@ -3,6 +3,7 @@ package models
 import (
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/goravel/framework/database/orm"
 
@@ -32,14 +33,18 @@ type S3Credentials struct {
 // CloudAccount manages personal cloud storage connections of each user (spec 2.1).
 type CloudAccount struct {
 	orm.Model
-	UserID       uint   `gorm:"column:user_id;index;not null" json:"user_id"`
-	Name         string `gorm:"column:name;size:100;not null" json:"name"`
-	Provider     string `gorm:"column:provider;size:50;not null;index" json:"provider"`
-	Credentials  string `gorm:"column:credentials;type:text;not null" json:"-"`
-	IsDefault    bool   `gorm:"column:is_default;default:false" json:"is_default"`
-	IsActive     bool   `gorm:"column:is_active;default:true" json:"is_active"`
-	TotalStorage int64  `gorm:"column:total_storage;default:0" json:"total_storage"`
-	UsedStorage  int64  `gorm:"column:used_storage;default:0" json:"used_storage"`
+	UserID      uint   `gorm:"column:user_id;index;not null" json:"user_id"`
+	Name        string `gorm:"column:name;size:100;not null" json:"name"`
+	Provider    string `gorm:"column:provider;size:50;not null;index" json:"provider"`
+	Credentials string `gorm:"column:credentials;type:text;not null" json:"-"`
+	IsDefault   bool   `gorm:"column:is_default;default:false" json:"is_default"`
+	IsActive    bool   `gorm:"column:is_active;default:true" json:"is_active"`
+	// SyncStatus tracks the current synchronisation state: idle, syncing or error.
+	SyncStatus string `gorm:"column:sync_status;type:enum('idle','syncing','error');default:idle" json:"sync_status"`
+	// LastSyncedAt is nil when the account has never been synchronised.
+	LastSyncedAt *time.Time `gorm:"column:last_synced_at" json:"last_synced_at"`
+	TotalStorage int64      `gorm:"column:total_storage;default:0" json:"total_storage"`
+	UsedStorage  int64      `gorm:"column:used_storage;default:0" json:"used_storage"`
 	orm.SoftDeletes
 }
 
@@ -90,17 +95,24 @@ func (c *CloudAccount) ToResponse() map[string]any {
 		}
 	}
 
+	var lastSynced any = nil
+	if c.LastSyncedAt != nil {
+		lastSynced = c.LastSyncedAt.Format(time.RFC3339)
+	}
+
 	return map[string]any{
-		"id":            c.ID,
-		"user_id":       c.UserID,
-		"name":          c.Name,
-		"provider":      c.Provider,
-		"credentials":   safeCreds,
-		"is_default":    c.IsDefault,
-		"is_active":     c.IsActive,
-		"total_storage": c.TotalStorage,
-		"used_storage":  c.UsedStorage,
-		"created_at":    c.CreatedAt,
-		"updated_at":    c.UpdatedAt,
+		"id":             c.ID,
+		"user_id":        c.UserID,
+		"name":           c.Name,
+		"provider":       c.Provider,
+		"credentials":    safeCreds,
+		"is_default":     c.IsDefault,
+		"is_active":      c.IsActive,
+		"sync_status":    c.SyncStatus,
+		"last_synced_at": lastSynced,
+		"total_storage":  c.TotalStorage,
+		"used_storage":   c.UsedStorage,
+		"created_at":     c.CreatedAt,
+		"updated_at":     c.UpdatedAt,
 	}
 }
