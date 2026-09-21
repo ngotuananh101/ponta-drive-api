@@ -25,6 +25,7 @@ func Web() {
 	cloudAccountController := controllers.NewCloudAccountController()
 	driveItemController := controllers.NewDriveItemController()
 	uploadController := controllers.NewUploadController()
+	dashboardController := controllers.NewDashboardController()
 	jwtAuth := &middleware.JwtAuth{}
 	setLocale := &middleware.SetLocale{}
 
@@ -50,6 +51,8 @@ func Web() {
 		})
 
 		router.Prefix("v1").Middleware(jwtAuth).Group(func(v1 route.Router) {
+			v1.Get("/dashboard/summary", dashboardController.Summary)
+
 			v1.Prefix("cloud-accounts").Group(func(ca route.Router) {
 				ca.Get("", cloudAccountController.Index)
 				ca.Post("", cloudAccountController.Store)
