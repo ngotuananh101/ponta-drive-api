@@ -8,5 +8,6 @@
   "update_failed": "Could not update the item. Please try again.",
   "star_failed": "Could not update the star. Please try again.",
   "delete_failed": "Could not delete the item. Please try again.",
-  "download_failed": "Could not download the item. Please try again."
+  "download_failed": "Could not download the item. Please try again.",
+  "invalid_cursor": "The pagination cursor is invalid."
 }

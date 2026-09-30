@@ -93,8 +93,21 @@ func (s *CloudDriveService) CreateFolder(ctx context.Context, userID uint, cloud
 	return folder, nil
 }
 
-// ListItems queries items for a given cloud account and parent directory.
-func (s *CloudDriveService) ListItems(ctx context.Context, userID uint, cloudAccountID uint, parentID *uint, search string, itemType string, sortField string, sortOrder string) ([]models.DriveItem, error) {
+// ListItems queries one page of items for a given cloud account and parent
+// directory.
+//
+// Results are ordered folders-first, then by sortField/sortOrder, then by id.
+// The id tier is not decoration: without it the ordering is not total, and rows
+// that share a sort value - routine for updated_at, which has one-second
+// granularity - would shuffle between pages, so a paging client would see some
+// items twice and never see others.
+//
+// An empty cursor means the first page. A non-empty limit is required; callers
+// pass limit+1 and trim, so has_more can be decided without a COUNT.
+func (s *CloudDriveService) ListItems(ctx context.Context, userID uint, cloudAccountID uint, parentID *uint, search string, itemType string, sortField string, sortOrder string, cursor DriveCursor, limit int) ([]models.DriveItem, error) {
+	orderCol := NormalizeSortField(sortField)
+	orderDir := NormalizeSortOrder(sortOrder)
+
 	query := facades.Orm().Query().
 		Where("user_id", userID).
 		Where("cloud_account_id", cloudAccountID)
@@ -113,23 +126,30 @@ func (s *CloudDriveService) ListItems(ctx context.Context, userID uint, cloudAcc
 		query = query.Where("type", itemType)
 	}
 
-	// Ordering
-	orderCol := "name"
-	switch sortField {
-	case "name", "size", "updated_at", "created_at":
-		orderCol = sortField
+	// A cursor only means something inside the ordering that produced it. If
+	// the caller changed `sort` or `order` since, the position is meaningless
+	// and is ignored, so the request degrades to a first page instead of
+	// comparing, say, a name against the size column.
+	if cursor.ID > 0 && cursor.Matches(orderCol, orderDir) {
+		cond, args := BuildCursorWhere(cursor, orderCol, orderDir)
+		query = query.Where(cond, args...)
 	}
 
-	orderDir := "asc"
-	if strings.ToLower(sortOrder) == "desc" {
-		orderDir = "desc"
+	if limit <= 0 {
+		limit = 50
 	}
 
-	// Folders first, then orderCol
-	query = query.Order(fmt.Sprintf("CASE WHEN type = '%s' THEN 0 ELSE 1 END, %s %s", models.ItemTypeFolder, orderCol, orderDir))
-
+	// ORDER BY type DESC replaces the old
+	// `CASE WHEN type = 'folder' THEN 0 ELSE 1 END`: 'file' sorts before
+	// 'folder' alphabetically, so descending puts folders first while still
+	// being a plain column reference the index can serve.
 	var items []models.DriveItem
-	if err := query.Get(&items); err != nil {
+	if err := query.
+		Order("type DESC").
+		Order(orderCol + " " + orderDir).
+		Order("id ASC").
+		Limit(limit).
+		Get(&items); err != nil {
 		return nil, err
 	}
 

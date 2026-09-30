@@ -8,5 +8,6 @@
   "update_failed": "Không thể cập nhật mục. Vui lòng thử lại.",
   "star_failed": "Không thể cập nhật dấu sao. Vui lòng thử lại.",
   "delete_failed": "Không thể xóa mục. Vui lòng thử lại.",
-  "download_failed": "Không thể tải xuống mục. Vui lòng thử lại."
+  "download_failed": "Không thể tải xuống mục. Vui lòng thử lại.",
+  "invalid_cursor": "Con trỏ phân trang không hợp lệ."
 }

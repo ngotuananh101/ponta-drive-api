@@ -65,12 +65,49 @@ func (c *DriveItemController) Index(ctx http.Context) http.Response {
 
 	search := ctx.Request().Query("search")
 	itemType := ctx.Request().Query("type", "all")
-	sortField := ctx.Request().Query("sort", "name")
-	sortOrder := ctx.Request().Query("order", "asc")
+	sortField := services.NormalizeSortField(ctx.Request().Query("sort", "name"))
+	sortOrder := services.NormalizeSortOrder(ctx.Request().Query("order", "asc"))
 
-	items, err := c.service.ListItems(context.Background(), user.ID, cloudAccountID, parentID, search, itemType, sortField, sortOrder)
+	// Default 50, hard ceiling 100: an unbounded page would pull the whole
+	// folder into memory on a single request.
+	limit := ctx.Request().QueryInt("limit", 50)
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	var cursor services.DriveCursor
+	if raw := ctx.Request().Query("cursor"); raw != "" {
+		parsed, err := services.DecodeDriveCursor(raw)
+		if err != nil {
+			return failResponse(ctx, http.StatusBadRequest, "drive.invalid_cursor", err)
+		}
+		cursor = parsed
+	}
+
+	// Ask for one row more than the page size: its presence is what proves a
+	// next page exists, without a second COUNT query.
+	items, err := c.service.ListItems(context.Background(), user.ID, cloudAccountID, parentID, search, itemType, sortField, sortOrder, cursor, limit+1)
 	if err != nil {
 		return failResponse(ctx, http.StatusInternalServerError, "drive.list_failed", err)
+	}
+
+	hasMore := len(items) > limit
+	if hasMore {
+		items = items[:limit]
+	}
+
+	nextCursor := ""
+	if hasMore && len(items) > 0 {
+		// The cursor records the ordering it was built under, so a later
+		// request with a different `sort` can tell the position is stale.
+		encoded, err := services.EncodeDriveCursor(items[len(items)-1], sortField, sortOrder)
+		if err != nil {
+			return failResponse(ctx, http.StatusInternalServerError, "drive.list_failed", err)
+		}
+		nextCursor = encoded
 	}
 
 	data := make([]map[string]any, 0, len(items))
@@ -81,6 +118,10 @@ func (c *DriveItemController) Index(ctx http.Context) http.Response {
 	return ctx.Response().Success().Json(http.Json{
 		"status": "ok",
 		"data":   data,
+		"meta": http.Json{
+			"has_more":    hasMore,
+			"next_cursor": nextCursor,
+		},
 	})
 }
 
@@ -366,4 +407,3 @@ func (c *DriveItemController) Download(ctx http.Context) http.Response {
 
 	return ctx.Response().Redirect(http.StatusFound, downloadURL)
 }
-
