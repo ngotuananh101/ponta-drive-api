@@ -156,3 +156,31 @@ func (s *PresignedUploadTestSuite) TestPresignedUploadFlow() {
 	s.Equal(models.ItemStatusReady, item.Status)
 	s.Equal("mock-etag-abc", item.ETag)
 }
+
+// TestInitiatePresignedErrorDoesNotLeakInternalDetail proves a service error is
+// not echoed back to the client. An unknown cloud account produces a genuine
+// service error; the response must carry only the localized message.
+func (s *PresignedUploadTestSuite) TestInitiatePresignedErrorDoesNotLeakInternalDetail() {
+	payload, _ := json.Marshal(map[string]any{
+		"cloud_account_id": 999999999,
+		"file_name":        "leak.mp4",
+		"size":             1048576,
+		"mime_type":        "video/mp4",
+	})
+
+	resp, err := s.Http(s.T()).WithToken(s.token).Post("/v1/drive/upload/presigned", bytes.NewBuffer(payload))
+	s.Require().NoError(err)
+	resp.AssertStatus(http.StatusBadRequest)
+
+	body, err := resp.Json()
+	s.Require().NoError(err)
+
+	message, _ := body["message"].(string)
+	s.NotEmpty(message)
+	s.NotContains(message, "cloud account not found",
+		"the internal service error must not be echoed to the client")
+	s.NotContains(message, "Error ",
+		"raw driver/SQL error text must not reach the client")
+	s.NotContains(message, "initiate_failed",
+		"the translation key must resolve: an unresolved key would be shown to the user verbatim")
+}

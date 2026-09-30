@@ -1,5 +1,6 @@
 {
   "unauthorized": "Chưa xác thực",
   "invalid_account_id": "ID tài khoản không hợp lệ",
-  "uuid_required": "UUID của mục là bắt buộc"
+  "uuid_required": "UUID của mục là bắt buộc",
+  "fetch_failed": "Không thể tải dữ liệu. Vui lòng thử lại."
 }

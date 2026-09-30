@@ -1,8 +1,6 @@
 package controllers
 
 import (
-	"context"
-
 	"github.com/goravel/framework/contracts/http"
 
 	"ponta_drive/app/facades"
@@ -29,11 +27,16 @@ func (c *DashboardController) Summary(ctx http.Context) http.Response {
 		})
 	}
 
-	summary, err := c.service.GetSummary(context.Background(), user.ID)
+	// Pass the request context so a client disconnect or timeout cancels the
+	// underlying queries instead of leaving them running.
+	summary, err := c.service.GetSummary(ctx.Context(), user.ID)
 	if err != nil {
+		// Log the underlying cause, but never surface it to the client: DB errors
+		// can leak schema and query details.
+		facades.Log().Errorf("[Dashboard] Failed to build summary for user %d: %v", user.ID, err)
 		return ctx.Response().Json(http.StatusInternalServerError, http.Json{
 			"status":  "error",
-			"message": err.Error(),
+			"message": facades.Lang(ctx).Get("common.fetch_failed"),
 		})
 	}
 

@@ -9,6 +9,14 @@ import (
 
 // GetClientIP extracts the real client IP from request headers (proxy-aware).
 //
+// SECURITY: the forwarding headers below are client-supplied and trivially
+// spoofable. This value is used only for audit logging, never for
+// authentication or authorization. It is trustworthy only when a reverse proxy
+// (nginx, Cloudflare, ...) sits in front of the app and overwrites
+// `X-Forwarded-For` / `X-Real-IP` on every inbound request. The proxy is
+// responsible for setting these headers; the application does not validate
+// them against a trusted-proxy allowlist.
+//
 // Resolution order:
 //  1. First valid entry of `X-Forwarded-For`
 //  2. `X-Real-IP`

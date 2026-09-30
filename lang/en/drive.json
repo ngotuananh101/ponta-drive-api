@@ -2,5 +2,11 @@
   "cloud_account_required": "cloud_account_id is required",
   "list_failed": "Failed to list items",
   "item_not_found": "Drive item not found",
-  "item_deleted": "Drive item deleted successfully"
+  "item_deleted": "Drive item deleted successfully",
+  "invalid_request": "The request is invalid.",
+  "create_failed": "Could not create the folder. Please try again.",
+  "update_failed": "Could not update the item. Please try again.",
+  "star_failed": "Could not update the star. Please try again.",
+  "delete_failed": "Could not delete the item. Please try again.",
+  "download_failed": "Could not download the item. Please try again."
 }

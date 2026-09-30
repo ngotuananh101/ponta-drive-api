@@ -37,10 +37,7 @@ func (c *UploadController) InitiatePresigned(ctx http.Context) http.Response {
 	var req requests.PresignedUploadRequest
 	errors, err := ctx.Request().ValidateRequest(&req)
 	if err != nil {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": err.Error(),
-		})
+		return failResponse(ctx, http.StatusBadRequest, "upload.invalid_request", err)
 	}
 	if errors != nil {
 		return ctx.Response().Json(http.StatusUnprocessableEntity, http.Json{
@@ -60,10 +57,7 @@ func (c *UploadController) InitiatePresigned(ctx http.Context) http.Response {
 		req.MimeType,
 	)
 	if err != nil {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": err.Error(),
-		})
+		return failResponse(ctx, http.StatusBadRequest, "upload.initiate_failed", err)
 	}
 
 	return ctx.Response().Success().Json(http.Json{
@@ -92,10 +86,7 @@ func (c *UploadController) CompletePresigned(ctx http.Context) http.Response {
 	var req requests.CompletePresignedUploadRequest
 	errors, err := ctx.Request().ValidateRequest(&req)
 	if err != nil {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": err.Error(),
-		})
+		return failResponse(ctx, http.StatusBadRequest, "upload.invalid_request", err)
 	}
 	if errors != nil {
 		return ctx.Response().Json(http.StatusUnprocessableEntity, http.Json{
@@ -107,14 +98,11 @@ func (c *UploadController) CompletePresigned(ctx http.Context) http.Response {
 
 	item, err := c.driveService.CompletePresignedUpload(context.Background(), user.ID, req.ItemUUID)
 	if err != nil {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": err.Error(),
-		})
+		return failResponse(ctx, http.StatusBadRequest, "upload.complete_failed", err)
 	}
 
 	activityService := services.NewActivityService()
-	_ = activityService.Log(user.ID, item.CloudAccountID, "uploaded", item.Name, &item.UUID, helpers.GetClientIP(ctx), helpers.GetUserAgent(ctx), map[string]any{"size": item.Size, "mime": item.MimeType})
+	activityService.LogSafe(user.ID, item.CloudAccountID, "uploaded", item.Name, &item.UUID, helpers.GetClientIP(ctx), helpers.GetUserAgent(ctx), map[string]any{"size": item.Size, "mime": item.MimeType})
 
 	return ctx.Response().Success().Json(http.Json{
 		"status": "ok",
@@ -135,10 +123,7 @@ func (c *UploadController) InitMultipart(ctx http.Context) http.Response {
 	var req requests.InitMultipartUploadRequest
 	errors, err := ctx.Request().ValidateRequest(&req)
 	if err != nil {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": err.Error(),
-		})
+		return failResponse(ctx, http.StatusBadRequest, "upload.invalid_request", err)
 	}
 	if errors != nil {
 		return ctx.Response().Json(http.StatusUnprocessableEntity, http.Json{
@@ -159,10 +144,7 @@ func (c *UploadController) InitMultipart(ctx http.Context) http.Response {
 		req.ChunkSize,
 	)
 	if err != nil {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": err.Error(),
-		})
+		return failResponse(ctx, http.StatusBadRequest, "upload.initiate_failed", err)
 	}
 
 	return ctx.Response().Success().Json(http.Json{
@@ -233,10 +215,7 @@ func (c *UploadController) UploadPart(ctx http.Context) http.Response {
 
 	etag, _, err := c.driveService.UploadPart(context.Background(), user.ID, sessionID, int32(partNum), reader, partSize)
 	if err != nil {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": err.Error(),
-		})
+		return failResponse(ctx, http.StatusBadRequest, "upload.part_failed", err)
 	}
 
 	return ctx.Response().Success().Json(http.Json{
@@ -262,10 +241,7 @@ func (c *UploadController) CompleteMultipart(ctx http.Context) http.Response {
 	var req requests.CompleteMultipartUploadRequest
 	errors, err := ctx.Request().ValidateRequest(&req)
 	if err != nil {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": err.Error(),
-		})
+		return failResponse(ctx, http.StatusBadRequest, "upload.invalid_request", err)
 	}
 	if errors != nil {
 		return ctx.Response().Json(http.StatusUnprocessableEntity, http.Json{
@@ -277,14 +253,11 @@ func (c *UploadController) CompleteMultipart(ctx http.Context) http.Response {
 
 	item, err := c.driveService.CompleteMultipartUpload(context.Background(), user.ID, req.SessionID)
 	if err != nil {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": err.Error(),
-		})
+		return failResponse(ctx, http.StatusBadRequest, "upload.complete_failed", err)
 	}
 
 	activityService := services.NewActivityService()
-	_ = activityService.Log(user.ID, item.CloudAccountID, "uploaded", item.Name, &item.UUID, helpers.GetClientIP(ctx), helpers.GetUserAgent(ctx), map[string]any{"size": item.Size, "mime": item.MimeType})
+	activityService.LogSafe(user.ID, item.CloudAccountID, "uploaded", item.Name, &item.UUID, helpers.GetClientIP(ctx), helpers.GetUserAgent(ctx), map[string]any{"size": item.Size, "mime": item.MimeType})
 
 	return ctx.Response().Success().Json(http.Json{
 		"status": "ok",
@@ -315,10 +288,7 @@ func (c *UploadController) AbortMultipart(ctx http.Context) http.Response {
 
 	err := c.driveService.AbortMultipartUpload(context.Background(), user.ID, sessionID)
 	if err != nil {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": err.Error(),
-		})
+		return failResponse(ctx, http.StatusBadRequest, "upload.abort_failed", err)
 	}
 
 	return ctx.Response().Success().Json(http.Json{

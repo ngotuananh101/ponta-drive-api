@@ -170,3 +170,30 @@ func (s *DriveItemAPITestSuite) TestDriveItemLifecycle() {
 	s.Require().NoError(err)
 	delShowResp.AssertStatus(http.StatusNotFound)
 }
+
+// TestCreateFolderErrorDoesNotLeakInternalDetail proves a service error is not
+// echoed back to the client. Creating a folder under an unknown cloud account
+// produces a genuine service error; the response must carry only the localized
+// message, never the internal error text.
+func (s *DriveItemAPITestSuite) TestCreateFolderErrorDoesNotLeakInternalDetail() {
+	payload, _ := json.Marshal(map[string]any{
+		"cloud_account_id": 999999999,
+		"name":             "Leaky Folder",
+	})
+
+	resp, err := s.Http(s.T()).WithToken(s.token).Post("/v1/drive/items/folders", bytes.NewBuffer(payload))
+	s.Require().NoError(err)
+	resp.AssertStatus(http.StatusBadRequest)
+
+	body, err := resp.Json()
+	s.Require().NoError(err)
+
+	message, _ := body["message"].(string)
+	s.NotEmpty(message)
+	s.NotContains(message, "invalid cloud account",
+		"the internal service error must not be echoed to the client")
+	s.NotContains(message, "Error ",
+		"raw driver/SQL error text must not reach the client")
+	s.NotContains(message, "create_failed",
+		"the translation key must resolve: an unresolved key would be shown to the user verbatim")
+}

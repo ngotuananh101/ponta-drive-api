@@ -2,5 +2,10 @@
   "session_id_required": "session_id là bắt buộc",
   "part_number_required": "part_number hợp lệ là bắt buộc",
   "payload_missing": "Dữ liệu phần tải lên bị trống",
-  "aborted": "Đã hủy phiên tải lên đa phần thành công"
+  "aborted": "Đã hủy phiên tải lên đa phần thành công",
+  "invalid_request": "Yêu cầu tải lên không hợp lệ.",
+  "initiate_failed": "Không thể bắt đầu tải lên. Vui lòng thử lại.",
+  "complete_failed": "Không thể hoàn tất tải lên. Vui lòng thử lại.",
+  "part_failed": "Không thể tải lên phần dữ liệu. Vui lòng thử lại.",
+  "abort_failed": "Không thể hủy tải lên. Vui lòng thử lại."
 }

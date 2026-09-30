@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // ActivityLog records user actions as an audit trail surfaced on the home
 // dashboard (spec: home dashboard integration).
@@ -18,7 +21,7 @@ type ActivityLog struct {
 	CloudAccountID *uint     `json:"cloud_account_id"`
 	IPAddress      string    `gorm:"size:45;index" json:"ip_address"`
 	UserAgent      string    `gorm:"type:text" json:"user_agent"`
-	Metadata       string    `gorm:"type:json" json:"metadata"`
+	Metadata       *string   `gorm:"type:json" json:"metadata"`
 	CreatedAt      time.Time `gorm:"index:idx_user_created" json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }
@@ -29,6 +32,10 @@ func (ActivityLog) TableName() string {
 }
 
 // ToResponse returns a sanitized map representation for API responses.
+//
+// `metadata` is decoded from its stored JSON string so consumers receive a
+// structured object (e.g. `{"items_count": 12}`) rather than an escaped string.
+// A nil or non-decodable value is surfaced as nil.
 func (a *ActivityLog) ToResponse() map[string]any {
 	return map[string]any{
 		"id":          a.ID,
@@ -38,6 +45,21 @@ func (a *ActivityLog) ToResponse() map[string]any {
 		"cloud_id":    a.CloudAccountID,
 		"ip_address":  a.IPAddress,
 		"user_agent":  a.UserAgent,
+		"metadata":    a.decodedMetadata(),
 		"created_at":  a.CreatedAt.Format(time.RFC3339),
 	}
+}
+
+// decodedMetadata unmarshals the stored metadata JSON into a generic map.
+func (a *ActivityLog) decodedMetadata() any {
+	if a.Metadata == nil || *a.Metadata == "" {
+		return nil
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(*a.Metadata), &decoded); err != nil {
+		return nil
+	}
+
+	return decoded
 }

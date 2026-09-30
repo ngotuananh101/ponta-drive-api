@@ -84,7 +84,7 @@ func (j *SyncS3BucketJob) Handle(args ...any) error {
 		_ = facades.Orm().Query().Where("id", cloudAccountID).First(&account)
 
 		activityService := services.NewActivityService()
-		_ = activityService.Log(userID, cloudAccountID, "synced", account.Name, nil, "system", "Queue Worker", map[string]any{"items_count": itemsCount})
+		activityService.LogSafe(userID, cloudAccountID, "synced", account.Name, nil, "system", "Queue Worker", map[string]any{"items_count": itemsCount})
 	}()
 
 	service := services.NewCloudDriveService()

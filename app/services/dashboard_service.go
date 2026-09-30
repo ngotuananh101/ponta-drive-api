@@ -41,11 +41,17 @@ type StorageSummary struct {
 // GetSummary builds the dashboard payload: connected clouds, suggested files,
 // recent activity and the aggregated storage summary.
 func (s *DashboardService) GetSummary(ctx context.Context, userID uint) (*DashboardSummary, error) {
+	// Every query is bound to ctx so a cancelled/timed-out request aborts the
+	// work instead of running to completion against a dead connection.
+	query := facades.Orm().WithContext(ctx).Query()
+
 	var accounts []models.CloudAccount
-	_ = facades.Orm().Query().
+	if err := query.
 		Where("user_id", userID).
 		Order("is_default desc, id desc").
-		Get(&accounts)
+		Get(&accounts); err != nil {
+		return nil, fmt.Errorf("failed to load cloud accounts for user %d: %w", userID, err)
+	}
 
 	clouds := make([]map[string]any, 0, len(accounts))
 	var totalUsed, totalCapacity int64
@@ -56,9 +62,16 @@ func (s *DashboardService) GetSummary(ctx context.Context, userID uint) (*Dashbo
 		totalCapacity += acc.TotalStorage
 	}
 
-	suggestedFiles, _ := s.getSuggestedFiles(ctx, userID)
+	suggestedFiles, err := s.getSuggestedFiles(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
 
-	activities, _ := s.activityService.GetRecent(userID, 8)
+	activities, err := s.activityService.GetRecent(ctx, userID, 8)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load recent activity for user %d: %w", userID, err)
+	}
+
 	actData := make([]map[string]any, 0, len(activities))
 	for _, a := range activities {
 		actData = append(actData, a.ToResponse())
@@ -86,27 +99,38 @@ func (s *DashboardService) GetSummary(ctx context.Context, userID uint) (*Dashbo
 // getSuggestedFiles prefers starred items, then tops up with files updated in
 // the last seven days, capped at 8 entries.
 func (s *DashboardService) getSuggestedFiles(ctx context.Context, userID uint) ([]map[string]any, error) {
+	query := facades.Orm().WithContext(ctx).Query()
+
 	var items []models.DriveItem
 
-	_ = facades.Orm().Query().
+	// `id` is a tiebreaker: `updated_at` has second granularity, so items
+	// touched within the same second would otherwise come back in an
+	// arbitrary order.
+	if err := query.
 		Where("user_id", userID).
 		Where("is_starred", true).
 		Where("status", models.ItemStatusReady).
 		Order("updated_at desc").
+		Order("id desc").
 		Limit(4).
-		Get(&items)
+		Get(&items); err != nil {
+		return nil, fmt.Errorf("failed to load starred files for user %d: %w", userID, err)
+	}
 
 	if len(items) < 8 {
 		var recent []models.DriveItem
 		sevenDaysAgo := time.Now().AddDate(0, 0, -7)
-		_ = facades.Orm().Query().
+		if err := query.
 			Where("user_id", userID).
 			Where("is_starred", false).
 			Where("status", models.ItemStatusReady).
 			Where("updated_at > ?", sevenDaysAgo).
 			Order("updated_at desc").
+			Order("id desc").
 			Limit(8 - len(items)).
-			Get(&recent)
+			Get(&recent); err != nil {
+			return nil, fmt.Errorf("failed to load recent files for user %d: %w", userID, err)
+		}
 		items = append(items, recent...)
 	}
 

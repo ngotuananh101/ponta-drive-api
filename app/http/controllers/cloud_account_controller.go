@@ -417,7 +417,7 @@ func (c *CloudAccountController) Sync(ctx http.Context) http.Response {
 
 	_, _ = facades.Orm().Query().Where("id", account.ID).Update(map[string]any{"sync_status": "syncing"})
 	activityService := services.NewActivityService()
-	_ = activityService.Log(user.ID, account.ID, "sync_started", account.Name, nil, helpers.GetClientIP(ctx), helpers.GetUserAgent(ctx), nil)
+	activityService.LogSafe(user.ID, account.ID, "sync_started", account.Name, nil, helpers.GetClientIP(ctx), helpers.GetUserAgent(ctx), nil)
 
 	// Dispatch sync job via Queue facade
 	job := &jobs.SyncS3BucketJob{}

@@ -70,10 +70,7 @@ func (c *DriveItemController) Index(ctx http.Context) http.Response {
 
 	items, err := c.service.ListItems(context.Background(), user.ID, cloudAccountID, parentID, search, itemType, sortField, sortOrder)
 	if err != nil {
-		return ctx.Response().Json(http.StatusInternalServerError, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("drive.list_failed") + ": " + err.Error(),
-		})
+		return failResponse(ctx, http.StatusInternalServerError, "drive.list_failed", err)
 	}
 
 	data := make([]map[string]any, 0, len(items))
@@ -100,10 +97,7 @@ func (c *DriveItemController) StoreFolder(ctx http.Context) http.Response {
 	var req requests.CreateFolderRequest
 	errors, err := ctx.Request().ValidateRequest(&req)
 	if err != nil {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": err.Error(),
-		})
+		return failResponse(ctx, http.StatusBadRequest, "drive.invalid_request", err)
 	}
 	if errors != nil {
 		return ctx.Response().Json(http.StatusUnprocessableEntity, http.Json{
@@ -115,14 +109,11 @@ func (c *DriveItemController) StoreFolder(ctx http.Context) http.Response {
 
 	folder, err := c.service.CreateFolder(context.Background(), user.ID, req.CloudAccountID, req.ParentID, req.Name)
 	if err != nil {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": err.Error(),
-		})
+		return failResponse(ctx, http.StatusBadRequest, "drive.create_failed", err)
 	}
 
 	activityService := services.NewActivityService()
-	_ = activityService.Log(user.ID, folder.CloudAccountID, "created_folder", folder.Name, &folder.UUID, helpers.GetClientIP(ctx), helpers.GetUserAgent(ctx), nil)
+	activityService.LogSafe(user.ID, folder.CloudAccountID, "created_folder", folder.Name, &folder.UUID, helpers.GetClientIP(ctx), helpers.GetUserAgent(ctx), nil)
 
 	return ctx.Response().Json(http.StatusCreated, http.Json{
 		"status": "ok",
@@ -183,10 +174,7 @@ func (c *DriveItemController) Update(ctx http.Context) http.Response {
 	var req requests.UpdateDriveItemRequest
 	errors, err := ctx.Request().ValidateRequest(&req)
 	if err != nil {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": err.Error(),
-		})
+		return failResponse(ctx, http.StatusBadRequest, "drive.invalid_request", err)
 	}
 	if errors != nil {
 		return ctx.Response().Json(http.StatusUnprocessableEntity, http.Json{
@@ -205,27 +193,39 @@ func (c *DriveItemController) Update(ctx http.Context) http.Response {
 	// UpdateItem mutates and returns the same pointer, so item.Name afterwards
 	// already holds the new name.
 	previousName := ""
+	hasPrevious := false
 	if existing, fetchErr := c.service.GetItemByUUID(context.Background(), user.ID, itemUUID); fetchErr == nil {
 		previousName = existing.Name
+		hasPrevious = true
 	}
 
 	item, err := c.service.UpdateItem(context.Background(), user.ID, itemUUID, name, req.ParentID)
 	if err != nil {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": err.Error(),
-		})
+		return failResponse(ctx, http.StatusBadRequest, "drive.update_failed", err)
 	}
 
-	if name != "" && name != previousName {
+	if shouldLogRename(hasPrevious, name, previousName) {
 		activityService := services.NewActivityService()
-		_ = activityService.Log(user.ID, item.CloudAccountID, "renamed", fmt.Sprintf("%s → %s", previousName, name), &item.UUID, helpers.GetClientIP(ctx), helpers.GetUserAgent(ctx), nil)
+		activityService.LogSafe(user.ID, item.CloudAccountID, "renamed", fmt.Sprintf("%s → %s", previousName, name), &item.UUID, helpers.GetClientIP(ctx), helpers.GetUserAgent(ctx), nil)
 	}
 
 	return ctx.Response().Success().Json(http.Json{
 		"status": "ok",
 		"data":   item.ToResponse(),
 	})
+}
+
+// shouldLogRename reports whether a rename activity should be recorded.
+//
+// hasPrevious is false when the pre-update lookup failed; in that case the old
+// name is unknown and no rename can be asserted. This guards against logging a
+// "renamed" activity (with an empty previous name) when nothing was renamed.
+func shouldLogRename(hasPrevious bool, newName, previousName string) bool {
+	if !hasPrevious || newName == "" {
+		return false
+	}
+
+	return newName != previousName
 }
 
 // Star toggles the star flag on an item.
@@ -248,10 +248,7 @@ func (c *DriveItemController) Star(ctx http.Context) http.Response {
 
 	item, err := c.service.ToggleStar(context.Background(), user.ID, itemUUID)
 	if err != nil {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": err.Error(),
-		})
+		return failResponse(ctx, http.StatusBadRequest, "drive.star_failed", err)
 	}
 
 	return ctx.Response().Success().Json(http.Json{
@@ -280,14 +277,17 @@ func (c *DriveItemController) Destroy(ctx http.Context) http.Response {
 
 	permanent := ctx.Request().QueryBool("permanent", false)
 
-	item, _ := c.service.GetItemByUUID(context.Background(), user.ID, itemUUID)
+	// Look the item up first so the audit entry can name what was deleted. A
+	// lookup failure is not fatal here: DeleteItem below is the operation that
+	// decides success, and it re-validates ownership.
+	item, lookupErr := c.service.GetItemByUUID(context.Background(), user.ID, itemUUID)
+	if lookupErr != nil {
+		facades.Log().Warningf("[Drive] Could not load item %s before delete for user %d: %v", itemUUID, user.ID, lookupErr)
+	}
 
 	err := c.service.DeleteItem(context.Background(), user.ID, itemUUID, permanent)
 	if err != nil {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": err.Error(),
-		})
+		return failResponse(ctx, http.StatusBadRequest, "drive.delete_failed", err)
 	}
 
 	if item != nil {
@@ -296,7 +296,7 @@ func (c *DriveItemController) Destroy(ctx http.Context) http.Response {
 		if permanent {
 			action = "permanently_deleted"
 		}
-		_ = activityService.Log(user.ID, item.CloudAccountID, action, item.Name, &item.UUID, helpers.GetClientIP(ctx), helpers.GetUserAgent(ctx), map[string]any{"permanent": permanent})
+		activityService.LogSafe(user.ID, item.CloudAccountID, action, item.Name, &item.UUID, helpers.GetClientIP(ctx), helpers.GetUserAgent(ctx), map[string]any{"permanent": permanent})
 	}
 
 	return ctx.Response().Success().Json(http.Json{
@@ -328,10 +328,7 @@ func (c *DriveItemController) Download(ctx http.Context) http.Response {
 	if mode == "stream" {
 		stream, item, err := c.service.GetItemStream(context.Background(), user.ID, itemUUID)
 		if err != nil {
-			return ctx.Response().Json(http.StatusBadRequest, http.Json{
-				"status":  "error",
-				"message": err.Error(),
-			})
+			return failResponse(ctx, http.StatusBadRequest, "drive.download_failed", err)
 		}
 
 		mimeType := item.MimeType
@@ -354,10 +351,7 @@ func (c *DriveItemController) Download(ctx http.Context) http.Response {
 
 	downloadURL, item, err := c.service.GetPresignedDownloadURL(context.Background(), user.ID, itemUUID, 15*time.Minute)
 	if err != nil {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": err.Error(),
-		})
+		return failResponse(ctx, http.StatusBadRequest, "drive.download_failed", err)
 	}
 
 	if mode == "json" {

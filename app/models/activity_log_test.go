@@ -12,6 +12,7 @@ func TestActivityLogToResponse(t *testing.T) {
 	targetUUID := "3f2b6d0e-1a4c-4f2e-9b7a-8c1d2e3f4a5b"
 	cloudAccountID := uint(7)
 	createdAt := time.Date(2026, 9, 20, 14, 30, 0, 0, time.UTC)
+	metadata := `{"size":1024}`
 
 	log := ActivityLog{
 		ID:             42,
@@ -22,7 +23,7 @@ func TestActivityLogToResponse(t *testing.T) {
 		CloudAccountID: &cloudAccountID,
 		IPAddress:      "203.0.113.10",
 		UserAgent:      "Mozilla/5.0 (Test)",
-		Metadata:       `{"size":1024}`,
+		Metadata:       &metadata,
 		CreatedAt:      createdAt,
 		UpdatedAt:      createdAt,
 	}
@@ -36,11 +37,26 @@ func TestActivityLogToResponse(t *testing.T) {
 	assert.Equal(t, &cloudAccountID, resp["cloud_id"])
 	assert.Equal(t, "203.0.113.10", resp["ip_address"])
 	assert.Equal(t, "Mozilla/5.0 (Test)", resp["user_agent"])
+	assert.Equal(t, map[string]any{"size": float64(1024)}, resp["metadata"])
 
 	created, ok := resp["created_at"].(string)
 	assert.True(t, ok, "created_at should be a string")
 	assert.True(t, strings.Contains(created, "20"), "created_at should contain the year prefix")
 	assert.Equal(t, createdAt.Format(time.RFC3339), created)
+}
+
+func TestActivityLogToResponseNilMetadata(t *testing.T) {
+	log := ActivityLog{
+		ID:         43,
+		UserID:     1,
+		Action:     "created_folder",
+		TargetName: "Photos",
+		Metadata:   nil,
+	}
+
+	resp := log.ToResponse()
+
+	assert.Nil(t, resp["metadata"], "nil metadata should serialize as nil, not empty string")
 }
 
 func TestActivityLogTableName(t *testing.T) {

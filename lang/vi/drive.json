@@ -2,5 +2,11 @@
   "cloud_account_required": "cloud_account_id là bắt buộc",
   "list_failed": "Không thể lấy danh sách tệp tin và thư mục",
   "item_not_found": "Không tìm thấy mục trong ổ đĩa",
-  "item_deleted": "Mục đã được xóa thành công"
+  "item_deleted": "Mục đã được xóa thành công",
+  "invalid_request": "Yêu cầu không hợp lệ.",
+  "create_failed": "Không thể tạo thư mục. Vui lòng thử lại.",
+  "update_failed": "Không thể cập nhật mục. Vui lòng thử lại.",
+  "star_failed": "Không thể cập nhật dấu sao. Vui lòng thử lại.",
+  "delete_failed": "Không thể xóa mục. Vui lòng thử lại.",
+  "download_failed": "Không thể tải xuống mục. Vui lòng thử lại."
 }
