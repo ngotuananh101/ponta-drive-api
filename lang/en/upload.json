@@ -4,7 +4,7 @@
   "payload_missing": "missing or empty chunk payload",
   "aborted": "Multipart upload aborted successfully",
   "invalid_request": "The upload request is invalid.",
-  "initiate_failed_typo": "Could not start the upload. Please try again.",
+  "initiate_failed": "Could not start the upload. Please try again.",
   "complete_failed": "Could not finish the upload. Please try again.",
   "part_failed": "Could not upload the chunk. Please try again.",
   "abort_failed": "Could not cancel the upload. Please try again."

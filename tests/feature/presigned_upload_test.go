@@ -184,3 +184,30 @@ func (s *PresignedUploadTestSuite) TestInitiatePresignedErrorDoesNotLeakInternal
 	s.NotContains(message, "initiate_failed",
 		"the translation key must resolve: an unresolved key would be shown to the user verbatim")
 }
+
+// TestInitiatePresignedErrorResolvesEnglishMessage pins the English locale to a
+// real translation. The default locale is Vietnamese, so a missing or
+// misspelled key in lang/en would never surface in the other tests: an English
+// client would be shown the raw key string instead of a message.
+func (s *PresignedUploadTestSuite) TestInitiatePresignedErrorResolvesEnglishMessage() {
+	payload, _ := json.Marshal(map[string]any{
+		"cloud_account_id": 999999999,
+		"file_name":        "locale.mp4",
+		"size":             1048576,
+		"mime_type":        "video/mp4",
+	})
+
+	resp, err := s.Http(s.T()).WithToken(s.token).
+		WithHeader("Accept-Language", "en").
+		Post("/v1/drive/upload/presigned", bytes.NewBuffer(payload))
+	s.Require().NoError(err)
+	resp.AssertStatus(http.StatusBadRequest)
+
+	body, err := resp.Json()
+	s.Require().NoError(err)
+
+	message, _ := body["message"].(string)
+	s.NotEmpty(message)
+	s.Equal("Could not start the upload. Please try again.", message,
+		"the English locale must resolve upload.initiate_failed to its translation")
+}
