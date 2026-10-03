@@ -2,5 +2,6 @@
   "unauthorized": "Unauthorized",
   "invalid_account_id": "Invalid account ID",
   "uuid_required": "Item UUID is required",
-  "fetch_failed": "Unable to load data. Please try again."
+  "fetch_failed": "Unable to load data. Please try again.",
+  "invalid_request": "Invalid request payload"
 }

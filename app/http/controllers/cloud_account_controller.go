@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -33,10 +34,7 @@ func NewCloudAccountController() *CloudAccountController {
 func (c *CloudAccountController) Index(ctx http.Context) http.Response {
 	user, ok := ctx.Value("user").(models.User)
 	if !ok || user.ID == 0 {
-		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("common.unauthorized"),
-		})
+		return failResponse(ctx, http.StatusUnauthorized, "common.unauthorized", nil)
 	}
 
 	var accounts []models.CloudAccount
@@ -45,10 +43,7 @@ func (c *CloudAccountController) Index(ctx http.Context) http.Response {
 		Order("is_default desc, id desc").
 		Get(&accounts)
 	if err != nil {
-		return ctx.Response().Json(http.StatusInternalServerError, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("cloud.fetch_failed"),
-		})
+		return failResponse(ctx, http.StatusInternalServerError, "cloud.fetch_failed", err)
 	}
 
 	data := make([]map[string]any, 0, len(accounts))
@@ -67,10 +62,7 @@ func (c *CloudAccountController) Test(ctx http.Context) http.Response {
 	var req requests.TestCloudAccountRequest
 	errors, err := ctx.Request().ValidateRequest(&req)
 	if err != nil {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": err.Error(),
-		})
+		return failResponse(ctx, http.StatusBadRequest, "common.invalid_request", err)
 	}
 	if errors != nil {
 		return ctx.Response().Json(http.StatusUnprocessableEntity, http.Json{
@@ -92,19 +84,13 @@ func (c *CloudAccountController) Test(ctx http.Context) http.Response {
 
 	driver, err := c.factory.BuildDriver(context.Background(), req.Provider, creds)
 	if err != nil {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("cloud.driver_init_failed"),
-		})
+		return failResponse(ctx, http.StatusBadRequest, "cloud.driver_init_failed", fmt.Errorf("provider=%s: %w", req.Provider, err))
 	}
 
 	// Validate bucket connection by listing up to 1 item
 	_, err = driver.ListObjects(context.Background(), "", "", 1)
 	if err != nil {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("cloud.connection_test_failed"),
-		})
+		return failResponse(ctx, http.StatusBadRequest, "cloud.connection_test_failed", fmt.Errorf("provider=%s endpoint=%s bucket=%s: %w", req.Provider, req.Endpoint, req.Bucket, err))
 	}
 
 	return ctx.Response().Success().Json(http.Json{
@@ -117,19 +103,13 @@ func (c *CloudAccountController) Test(ctx http.Context) http.Response {
 func (c *CloudAccountController) Store(ctx http.Context) http.Response {
 	user, ok := ctx.Value("user").(models.User)
 	if !ok || user.ID == 0 {
-		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("common.unauthorized"),
-		})
+		return failResponse(ctx, http.StatusUnauthorized, "common.unauthorized", nil)
 	}
 
 	var req requests.StoreCloudAccountRequest
 	errors, err := ctx.Request().ValidateRequest(&req)
 	if err != nil {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": err.Error(),
-		})
+		return failResponse(ctx, http.StatusBadRequest, "common.invalid_request", err)
 	}
 	if errors != nil {
 		return ctx.Response().Json(http.StatusUnprocessableEntity, http.Json{
@@ -151,10 +131,7 @@ func (c *CloudAccountController) Store(ctx http.Context) http.Response {
 
 	encryptedCreds, err := c.credService.EncryptCredentials(creds)
 	if err != nil {
-		return ctx.Response().Json(http.StatusInternalServerError, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("cloud.encrypt_failed"),
-		})
+		return failResponse(ctx, http.StatusInternalServerError, "cloud.encrypt_failed", err)
 	}
 
 	// If marked as default, unset existing default accounts
@@ -175,10 +152,7 @@ func (c *CloudAccountController) Store(ctx http.Context) http.Response {
 	}
 
 	if err := facades.Orm().Query().Create(&account); err != nil {
-		return ctx.Response().Json(http.StatusInternalServerError, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("cloud.save_failed"),
-		})
+		return failResponse(ctx, http.StatusInternalServerError, "cloud.save_failed", err)
 	}
 
 	return ctx.Response().Json(http.StatusCreated, http.Json{
@@ -191,18 +165,12 @@ func (c *CloudAccountController) Store(ctx http.Context) http.Response {
 func (c *CloudAccountController) Show(ctx http.Context) http.Response {
 	user, ok := ctx.Value("user").(models.User)
 	if !ok || user.ID == 0 {
-		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("common.unauthorized"),
-		})
+		return failResponse(ctx, http.StatusUnauthorized, "common.unauthorized", nil)
 	}
 
 	id := ctx.Request().RouteInt("id")
 	if id <= 0 {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("common.invalid_account_id"),
-		})
+		return failResponse(ctx, http.StatusBadRequest, "common.invalid_account_id", nil)
 	}
 
 	var account models.CloudAccount
@@ -211,10 +179,7 @@ func (c *CloudAccountController) Show(ctx http.Context) http.Response {
 		Where("user_id", user.ID).
 		First(&account)
 	if err != nil || account.ID == 0 {
-		return ctx.Response().Json(http.StatusNotFound, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("cloud.not_found"),
-		})
+		return failResponse(ctx, http.StatusNotFound, "cloud.not_found", err)
 	}
 
 	return ctx.Response().Success().Json(http.Json{
@@ -227,18 +192,12 @@ func (c *CloudAccountController) Show(ctx http.Context) http.Response {
 func (c *CloudAccountController) Update(ctx http.Context) http.Response {
 	user, ok := ctx.Value("user").(models.User)
 	if !ok || user.ID == 0 {
-		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("common.unauthorized"),
-		})
+		return failResponse(ctx, http.StatusUnauthorized, "common.unauthorized", nil)
 	}
 
 	id := ctx.Request().RouteInt("id")
 	if id <= 0 {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("common.invalid_account_id"),
-		})
+		return failResponse(ctx, http.StatusBadRequest, "common.invalid_account_id", nil)
 	}
 
 	var account models.CloudAccount
@@ -247,19 +206,13 @@ func (c *CloudAccountController) Update(ctx http.Context) http.Response {
 		Where("user_id", user.ID).
 		First(&account)
 	if err != nil || account.ID == 0 {
-		return ctx.Response().Json(http.StatusNotFound, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("cloud.not_found"),
-		})
+		return failResponse(ctx, http.StatusNotFound, "cloud.not_found", err)
 	}
 
 	var req requests.UpdateCloudAccountRequest
 	errors, err := ctx.Request().ValidateRequest(&req)
 	if err != nil {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": err.Error(),
-		})
+		return failResponse(ctx, http.StatusBadRequest, "common.invalid_request", err)
 	}
 	if errors != nil {
 		return ctx.Response().Json(http.StatusUnprocessableEntity, http.Json{
@@ -314,14 +267,13 @@ func (c *CloudAccountController) Update(ctx http.Context) http.Response {
 		if req.PublicURL != "" {
 			existingCreds.PublicURL = req.PublicURL
 		}
-		_ = account.SetCredentials(existingCreds)
+		if err := account.SetCredentials(existingCreds); err != nil {
+			return failResponse(ctx, http.StatusInternalServerError, "cloud.encrypt_failed", err)
+		}
 	}
 
 	if err := facades.Orm().Query().Save(&account); err != nil {
-		return ctx.Response().Json(http.StatusInternalServerError, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("cloud.update_failed"),
-		})
+		return failResponse(ctx, http.StatusInternalServerError, "cloud.update_failed", err)
 	}
 
 	c.factory.InvalidateCache(account.ID)
@@ -336,18 +288,12 @@ func (c *CloudAccountController) Update(ctx http.Context) http.Response {
 func (c *CloudAccountController) Destroy(ctx http.Context) http.Response {
 	user, ok := ctx.Value("user").(models.User)
 	if !ok || user.ID == 0 {
-		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("common.unauthorized"),
-		})
+		return failResponse(ctx, http.StatusUnauthorized, "common.unauthorized", nil)
 	}
 
 	id := ctx.Request().RouteInt("id")
 	if id <= 0 {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("common.invalid_account_id"),
-		})
+		return failResponse(ctx, http.StatusBadRequest, "common.invalid_account_id", nil)
 	}
 
 	var account models.CloudAccount
@@ -356,17 +302,11 @@ func (c *CloudAccountController) Destroy(ctx http.Context) http.Response {
 		Where("user_id", user.ID).
 		First(&account)
 	if err != nil || account.ID == 0 {
-		return ctx.Response().Json(http.StatusNotFound, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("cloud.not_found"),
-		})
+		return failResponse(ctx, http.StatusNotFound, "cloud.not_found", err)
 	}
 
 	if _, err := facades.Orm().Query().Delete(&account); err != nil {
-		return ctx.Response().Json(http.StatusInternalServerError, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("cloud.delete_failed"),
-		})
+		return failResponse(ctx, http.StatusInternalServerError, "cloud.delete_failed", err)
 	}
 
 	c.factory.InvalidateCache(account.ID)
@@ -381,18 +321,12 @@ func (c *CloudAccountController) Destroy(ctx http.Context) http.Response {
 func (c *CloudAccountController) Sync(ctx http.Context) http.Response {
 	user, ok := ctx.Value("user").(models.User)
 	if !ok || user.ID == 0 {
-		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("common.unauthorized"),
-		})
+		return failResponse(ctx, http.StatusUnauthorized, "common.unauthorized", nil)
 	}
 
 	id := ctx.Request().RouteInt("id")
 	if id <= 0 {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("common.invalid_account_id"),
-		})
+		return failResponse(ctx, http.StatusBadRequest, "common.invalid_account_id", nil)
 	}
 
 	var account models.CloudAccount
@@ -401,10 +335,7 @@ func (c *CloudAccountController) Sync(ctx http.Context) http.Response {
 		Where("user_id", user.ID).
 		First(&account)
 	if err != nil || account.ID == 0 {
-		return ctx.Response().Json(http.StatusNotFound, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("cloud.not_found"),
-		})
+		return failResponse(ctx, http.StatusNotFound, "cloud.not_found", err)
 	}
 
 	var parentID *uint

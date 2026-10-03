@@ -193,3 +193,39 @@ func (s *CloudAccountAPITestSuite) TestCloudAccountTestConnection() {
 	s.Equal("ok", jsonBodyEn["status"])
 	s.Equal("Connection successful", jsonBodyEn["message"])
 }
+
+func (s *CloudAccountAPITestSuite) TestCloudAccountTestConnectionFailureSanitized() {
+	// Mock S3 server that returns 403 Forbidden with sensitive error details
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?><Error><Code>AccessDenied</Code><Message>Secret DB query failed on table secret_s3_meta at 10.0.0.45</Message></Error>`))
+	}))
+	defer mockServer.Close()
+
+	testPayload, _ := json.Marshal(map[string]any{
+		"provider":          models.ProviderMinIO,
+		"endpoint":          mockServer.URL,
+		"bucket":            "test-bucket",
+		"region":            "us-east-1",
+		"access_key_id":     "admin",
+		"secret_access_key": "password",
+		"use_path_style":    true,
+	})
+
+	// Test with English locale
+	resp, err := s.Http(s.T()).WithToken(s.token).WithHeader("Accept-Language", "en").Post("/v1/cloud-accounts/test", bytes.NewBuffer(testPayload))
+	s.Require().NoError(err)
+	resp.AssertStatus(http.StatusBadRequest)
+
+	body, err := resp.Json()
+	s.Require().NoError(err)
+	s.Equal("error", body["status"])
+	s.Equal("Connection test failed", body["message"])
+	// Response should only contain status and localized message
+	s.Len(body, 2)
+	s.NotContains(body["message"].(string), "secret_s3_meta")
+	s.NotContains(body["message"].(string), "10.0.0.45")
+	s.NotContains(body["message"].(string), "InternalError")
+	s.NotContains(body["message"].(string), mockServer.URL)
+}
