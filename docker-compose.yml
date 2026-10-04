@@ -1,6 +1,11 @@
 services:
   api:
-    image: debian:stable-slim
+    # Built from ./Dockerfile so the image ships a CA bundle (ca-certificates).
+    # debian:stable-slim on its own has no CA bundle, so every HTTPS call to
+    # cloud storage failed with "x509: certificate signed by unknown authority".
+    build:
+      context: .
+      dockerfile: Dockerfile
     env_file:
       - ./.env
     volumes:
