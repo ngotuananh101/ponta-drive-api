@@ -48,6 +48,44 @@ func (s *CloudDriveService) GetDriver(ctx context.Context, userID uint, cloudAcc
 	return driver, &account, nil
 }
 
+// ResolveCloudAccountID maps a public account uuid to the numeric id the rest of
+// the service uses. The API speaks uuid; internal queries keep using id.
+func (s *CloudDriveService) ResolveCloudAccountID(ctx context.Context, userID uint, accountUUID string) (uint, error) {
+	if accountUUID == "" {
+		return 0, errors.New("cloud account uuid is required")
+	}
+
+	var account models.CloudAccount
+	err := facades.Orm().Query().
+		Where("uuid", accountUUID).
+		Where("user_id", userID).
+		First(&account)
+	if err != nil || account.ID == 0 {
+		return 0, errors.New("cloud account not found or access denied")
+	}
+
+	return account.ID, nil
+}
+
+// ResolveDriveItemID maps a public item uuid to its numeric id, scoped to the
+// user and (when non-empty) the owning account.
+func (s *CloudDriveService) ResolveDriveItemID(ctx context.Context, userID uint, itemUUID string) (uint, error) {
+	if itemUUID == "" {
+		return 0, errors.New("item uuid is required")
+	}
+
+	var item models.DriveItem
+	err := facades.Orm().Query().
+		Where("uuid", itemUUID).
+		Where("user_id", userID).
+		First(&item)
+	if err != nil || item.ID == 0 {
+		return 0, errors.New("item not found")
+	}
+
+	return item.ID, nil
+}
+
 // CreateFolder creates a virtual folder under the specified parent directory.
 func (s *CloudDriveService) CreateFolder(ctx context.Context, userID uint, cloudAccountID uint, parentID *uint, name string) (*models.DriveItem, error) {
 	// Verify account belongs to user

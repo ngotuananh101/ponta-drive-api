@@ -71,6 +71,8 @@ func (s *DriveItemAPITestSuite) SetupTest() {
 	})
 	err = facades.Orm().Query().Create(&s.account)
 	s.Require().NoError(err)
+
+	s.Require().NotEmpty(s.account.UUID)
 }
 
 func (s *DriveItemAPITestSuite) TearDownTest() {
@@ -84,8 +86,8 @@ func (s *DriveItemAPITestSuite) TearDownTest() {
 func (s *DriveItemAPITestSuite) TestDriveItemLifecycle() {
 	// 1. Create a Folder (POST /v1/drive/items/folders)
 	createFolderPayload, _ := json.Marshal(map[string]any{
-		"cloud_account_id": s.account.ID,
-		"name":             "Work Documents",
+		"cloud_account_uuid": s.account.UUID,
+		"name":               "Work Documents",
 	})
 	createResp, err := s.Http(s.T()).WithToken(s.token).Post("/v1/drive/items/folders", bytes.NewBuffer(createFolderPayload))
 	s.Require().NoError(err)
@@ -95,13 +97,13 @@ func (s *DriveItemAPITestSuite) TestDriveItemLifecycle() {
 	s.Require().NoError(err)
 	folderData := createBody["data"].(map[string]any)
 	folderUUID := folderData["uuid"].(string)
-	_ = folderUUID // use folderUUID for parent_uuid in subsequent calls
 	s.NotEmpty(folderUUID)
+	s.NotContains(folderData, "id", "no numeric id may be exposed")
 	s.Equal("Work Documents", folderData["name"])
 	s.Equal(models.ItemTypeFolder, folderData["type"])
 
-	// 2. List Root Items (GET /v1/drive/items?cloud_account_id=...)
-	listResp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/drive/items?cloud_account_id=%d", s.account.ID))
+	// 2. List Root Items (GET /v1/drive/items?cloud_account_uuid=...)
+	listResp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/drive/items?cloud_account_uuid=%s", s.account.UUID))
 	s.Require().NoError(err)
 	listResp.AssertOk()
 
@@ -112,9 +114,9 @@ func (s *DriveItemAPITestSuite) TestDriveItemLifecycle() {
 
 	// 3. Create a Child Item inside the folder (use parent_uuid)
 	childFolderPayload, _ := json.Marshal(map[string]any{
-		"cloud_account_id": s.account.ID,
-		"parent_uuid":      folderUUID,
-		"name":             "Sub Projects",
+		"cloud_account_uuid": s.account.UUID,
+		"parent_uuid":        folderUUID,
+		"name":               "Sub Projects",
 	})
 	childResp, err := s.Http(s.T()).WithToken(s.token).Post("/v1/drive/items/folders", bytes.NewBuffer(childFolderPayload))
 	s.Require().NoError(err)
@@ -123,8 +125,8 @@ func (s *DriveItemAPITestSuite) TestDriveItemLifecycle() {
 	childBody, _ := childResp.Json()
 	childUUID := childBody["data"].(map[string]any)["uuid"].(string)
 
-	// 4. List items inside folder (GET /v1/drive/items?cloud_account_id=...&parent_uuid=...)
-	folderItemsResp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/drive/items?cloud_account_id=%d&parent_uuid=%s", s.account.ID, folderUUID))
+	// 4. List items inside folder (GET /v1/drive/items?cloud_account_uuid=...&parent_uuid=...)
+	folderItemsResp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/drive/items?cloud_account_uuid=%s&parent_uuid=%s", s.account.UUID, folderUUID))
 	s.Require().NoError(err)
 	folderItemsResp.AssertOk()
 
@@ -177,8 +179,8 @@ func (s *DriveItemAPITestSuite) TestDriveItemLifecycle() {
 // message, never the internal error text.
 func (s *DriveItemAPITestSuite) TestCreateFolderErrorDoesNotLeakInternalDetail() {
 	payload, _ := json.Marshal(map[string]any{
-		"cloud_account_id": 999999999,
-		"name":             "Leaky Folder",
+		"cloud_account_uuid": "00000000-0000-0000-0000-000000000000",
+		"name":               "Leaky Folder",
 	})
 
 	resp, err := s.Http(s.T()).WithToken(s.token).Post("/v1/drive/items/folders", bytes.NewBuffer(payload))
@@ -227,6 +229,7 @@ func (s *DriveItemAPITestSuite) TestBreadcrumb() {
 	// stop walking up. parent_id is no longer in response (uuid is used instead).
 	_, hasParentID := chain[0].(map[string]any)["parent_id"]
 	s.False(hasParentID, "the root-most entry must not have parent_id field")
+	s.NotContains(chain[0].(map[string]any), "parent_id")
 
 	// A root-level folder yields a single-entry chain.
 	rootResp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/drive/items/%s/breadcrumb", work.UUID))
@@ -257,8 +260,8 @@ func (s *DriveItemAPITestSuite) TestBreadcrumbNotFoundDoesNotLeakInternalDetail(
 // parentUUID is the UUID of the parent folder, or nil for root level.
 func (s *DriveItemAPITestSuite) createFolder(name string, parentUUID *string) models.DriveItem {
 	payload := map[string]any{
-		"cloud_account_id": s.account.ID,
-		"name":             name,
+		"cloud_account_uuid": s.account.UUID,
+		"name":               name,
 	}
 	if parentUUID != nil {
 		payload["parent_uuid"] = *parentUUID
@@ -273,14 +276,24 @@ func (s *DriveItemAPITestSuite) createFolder(name string, parentUUID *string) mo
 	s.Require().NoError(err)
 	data := body["data"].(map[string]any)
 
-	// Assign the promoted `Model.ID` field rather than set it in the composite
-	// literal: a promoted field in a struct literal needs go1.27 and this
-	// module's lang is go1.25.
 	var item models.DriveItem
 	item.UUID = data["uuid"].(string)
 	item.Name = data["name"].(string)
-	// Note: ID is no longer in response, so we need to look it up from DB
-	// when needed. For now, use the UUID for subsequent operations.
-	_ = data["id"] // silence unused variable warning if needed
 	return item
+}
+
+func (s *DriveItemAPITestSuite) TestListItemsCarryCloudAccountUUID() {
+	s.createFolder("Work", nil)
+
+	resp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/drive/items?cloud_account_uuid=%s", s.account.UUID))
+	s.Require().NoError(err)
+	resp.AssertOk()
+
+	body, err := resp.Json()
+	s.Require().NoError(err)
+	items := body["data"].([]any)
+	s.Require().NotEmpty(items)
+	first := items[0].(map[string]any)
+	s.Equal(s.account.UUID, first["cloud_account_uuid"])
+	s.NotContains(first, "cloud_account_id")
 }

@@ -26,6 +26,25 @@ func NewDriveItemController() *DriveItemController {
 	}
 }
 
+// fillAccountUUID sets each item's public account uuid from a resolved value so
+// ToResponse emits it instead of the numeric cloud_account_id.
+func fillAccountUUID(accountUUID string, items ...*models.DriveItem) {
+	for _, item := range items {
+		item.CloudAccountUUID = accountUUID
+	}
+}
+
+// accountUUIDFor returns the public uuid of the account owning the item. It is
+// best-effort: an item whose account cannot be read still serializes (with an
+// empty account uuid) rather than failing the whole response.
+func (c *DriveItemController) accountUUIDFor(ctx context.Context, item *models.DriveItem) string {
+	var account models.CloudAccount
+	if err := facades.Orm().Query().Where("id", item.CloudAccountID).First(&account); err != nil {
+		return ""
+	}
+	return account.UUID
+}
+
 // Index lists drive items (files & folders) in a directory.
 func (c *DriveItemController) Index(ctx http.Context) http.Response {
 	user, ok := ctx.Value("user").(models.User)
@@ -36,16 +55,15 @@ func (c *DriveItemController) Index(ctx http.Context) http.Response {
 		})
 	}
 
-	cloudAccountID := uint(ctx.Request().QueryInt("cloud_account_id", 0))
-	if cloudAccountID == 0 {
-		// Try default cloud account
+	cloudAccountUUID := ctx.Request().Query("cloud_account_uuid")
+	if cloudAccountUUID == "" {
 		var defaultAcc models.CloudAccount
 		_ = facades.Orm().Query().
 			Where("user_id", user.ID).
 			Where("is_default", true).
 			First(&defaultAcc)
 		if defaultAcc.ID > 0 {
-			cloudAccountID = defaultAcc.ID
+			cloudAccountUUID = defaultAcc.UUID
 		} else {
 			return ctx.Response().Json(http.StatusBadRequest, http.Json{
 				"status":  "error",
@@ -54,27 +72,18 @@ func (c *DriveItemController) Index(ctx http.Context) http.Response {
 		}
 	}
 
-	var parentID *uint
-	parentIDResolved := false
-
-	// First try parent_uuid (modern approach)
-	if parentUUID := ctx.Request().Query("parent_uuid"); parentUUID != "" {
-		var parentItem models.DriveItem
-		if err := facades.Orm().Query().Where("uuid", parentUUID).Where("user_id", user.ID).Where("cloud_account_id", cloudAccountID).First(&parentItem); err == nil && parentItem.ID > 0 {
-			parentID = &parentItem.ID
-			parentIDResolved = true
-		}
+	cloudAccountID, err := c.service.ResolveCloudAccountID(context.Background(), user.ID, cloudAccountUUID)
+	if err != nil {
+		return failResponse(ctx, http.StatusNotFound, "drive.cloud_account_required", err)
 	}
 
-	// Fall back to parent_id (numeric) if parent_uuid not provided or not found
-	if !parentIDResolved {
-		parentStr := ctx.Request().Query("parent_id")
-		if parentStr != "" {
-			if pid, err := strconv.ParseUint(parentStr, 10, 64); err == nil && pid > 0 {
-				uPid := uint(pid)
-				parentID = &uPid
-			}
+	var parentID *uint
+	if parentUUID := ctx.Request().Query("parent_uuid"); parentUUID != "" {
+		pid, err := c.service.ResolveDriveItemID(context.Background(), user.ID, parentUUID)
+		if err != nil {
+			return failResponse(ctx, http.StatusNotFound, "drive.item_not_found", err)
 		}
+		parentID = &pid
 	}
 
 	search := ctx.Request().Query("search")
@@ -126,11 +135,7 @@ func (c *DriveItemController) Index(ctx http.Context) http.Response {
 
 	data := make([]map[string]any, 0, len(items))
 	for i := range items {
-		// Load cloud account to get its UUID for the response
-		var account models.CloudAccount
-		if err := facades.Orm().Query().Where("id", items[i].CloudAccountID).First(&account); err == nil && account.UUID != "" {
-			items[i].CloudAccountUUID = account.UUID
-		}
+		fillAccountUUID(cloudAccountUUID, &items[i])
 		data = append(data, items[i].ToResponse())
 	}
 
@@ -167,28 +172,26 @@ func (c *DriveItemController) StoreFolder(ctx http.Context) http.Response {
 		})
 	}
 
-	// Resolve parent: prefer parent_uuid if provided, fall back to parent_id
-	var parentID *uint
-	if req.ParentUUID != "" {
-		var parentItem models.DriveItem
-		if err := facades.Orm().Query().Where("uuid", req.ParentUUID).Where("user_id", user.ID).Where("cloud_account_id", req.CloudAccountID).First(&parentItem); err != nil || parentItem.ID == 0 {
-			return failResponse(ctx, http.StatusBadRequest, "drive.parent_not_found", err)
-		}
-		parentID = &parentItem.ID
-	} else {
-		parentID = req.ParentID
-	}
-
-	folder, err := c.service.CreateFolder(context.Background(), user.ID, req.CloudAccountID, parentID, req.Name)
+	cloudAccountID, err := c.service.ResolveCloudAccountID(context.Background(), user.ID, req.CloudAccountUUID)
 	if err != nil {
 		return failResponse(ctx, http.StatusBadRequest, "drive.create_failed", err)
 	}
 
-	// Load cloud account to get its UUID for the response
-	var account models.CloudAccount
-	if err := facades.Orm().Query().Where("id", req.CloudAccountID).First(&account); err == nil && account.UUID != "" {
-		folder.CloudAccountUUID = account.UUID
+	var parentID *uint
+	if req.ParentUUID != "" {
+		pid, err := c.service.ResolveDriveItemID(context.Background(), user.ID, req.ParentUUID)
+		if err != nil {
+			return failResponse(ctx, http.StatusBadRequest, "drive.create_failed", err)
+		}
+		parentID = &pid
 	}
+
+	folder, err := c.service.CreateFolder(context.Background(), user.ID, cloudAccountID, parentID, req.Name)
+	if err != nil {
+		return failResponse(ctx, http.StatusBadRequest, "drive.create_failed", err)
+	}
+
+	fillAccountUUID(req.CloudAccountUUID, folder)
 
 	activityService := services.NewActivityService()
 	activityService.LogSafe(user.ID, folder.CloudAccountID, "created_folder", folder.Name, &folder.UUID, helpers.GetClientIP(ctx), helpers.GetUserAgent(ctx), nil)
@@ -219,17 +222,10 @@ func (c *DriveItemController) Show(ctx http.Context) http.Response {
 
 	item, err := c.service.GetItemByUUID(context.Background(), user.ID, itemUUID)
 	if err != nil {
-		return ctx.Response().Json(http.StatusNotFound, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("drive.item_not_found"),
-		})
+		return failResponse(ctx, http.StatusNotFound, "drive.item_not_found", err)
 	}
 
-	// Load cloud account to get its UUID for the response
-	var account models.CloudAccount
-	if err := facades.Orm().Query().Where("id", item.CloudAccountID).First(&account); err == nil && account.UUID != "" {
-		item.CloudAccountUUID = account.UUID
-	}
+	item.CloudAccountUUID = c.accountUUIDFor(context.Background(), item)
 
 	return ctx.Response().Success().Json(http.Json{
 		"status": "ok",
@@ -263,13 +259,12 @@ func (c *DriveItemController) Breadcrumb(ctx http.Context) http.Response {
 		return failResponse(ctx, http.StatusNotFound, "drive.item_not_found", err)
 	}
 
+	// All items in the chain belong to the same account; resolve its uuid once
+	// and fill it on every entry rather than querying per-item.
+	accountUUID := c.accountUUIDFor(context.Background(), &chain[0])
 	data := make([]map[string]any, 0, len(chain))
 	for i := range chain {
-		// Load cloud account to get its UUID for the response
-		var account models.CloudAccount
-		if err := facades.Orm().Query().Where("id", chain[i].CloudAccountID).First(&account); err == nil && account.UUID != "" {
-			chain[i].CloudAccountUUID = account.UUID
-		}
+		chain[i].CloudAccountUUID = accountUUID
 		data = append(data, chain[i].ToResponse())
 	}
 
@@ -315,16 +310,13 @@ func (c *DriveItemController) Update(ctx http.Context) http.Response {
 		name = ctx.Request().Input("name")
 	}
 
-	// Resolve parent: prefer parent_uuid if provided, fall back to parent_id
 	var parentID *uint
 	if req.ParentUUID != "" {
-		var parentItem models.DriveItem
-		if errRes := facades.Orm().Query().Where("uuid", req.ParentUUID).Where("user_id", user.ID).First(&parentItem); errRes != nil || parentItem.ID == 0 {
-			return failResponse(ctx, http.StatusBadRequest, "drive.parent_not_found", errRes)
+		pid, err := c.service.ResolveDriveItemID(context.Background(), user.ID, req.ParentUUID)
+		if err != nil {
+			return failResponse(ctx, http.StatusBadRequest, "drive.update_failed", err)
 		}
-		parentID = &parentItem.ID
-	} else {
-		parentID = req.ParentID
+		parentID = &pid
 	}
 
 	// Capture the current name so a rename can be detected after the update:
@@ -347,11 +339,7 @@ func (c *DriveItemController) Update(ctx http.Context) http.Response {
 		activityService.LogSafe(user.ID, item.CloudAccountID, "renamed", fmt.Sprintf("%s -> %s", previousName, name), &item.UUID, helpers.GetClientIP(ctx), helpers.GetUserAgent(ctx), nil)
 	}
 
-	// Load cloud account to get its UUID for the response
-	var account models.CloudAccount
-	if err := facades.Orm().Query().Where("id", item.CloudAccountID).First(&account); err == nil && account.UUID != "" {
-		item.CloudAccountUUID = account.UUID
-	}
+	item.CloudAccountUUID = c.accountUUIDFor(context.Background(), item)
 
 	return ctx.Response().Success().Json(http.Json{
 		"status": "ok",
@@ -395,11 +383,7 @@ func (c *DriveItemController) Star(ctx http.Context) http.Response {
 		return failResponse(ctx, http.StatusBadRequest, "drive.star_failed", err)
 	}
 
-	// Load cloud account to get its UUID for the response
-	var account models.CloudAccount
-	if err := facades.Orm().Query().Where("id", item.CloudAccountID).First(&account); err == nil && account.UUID != "" {
-		item.CloudAccountUUID = account.UUID
-	}
+	item.CloudAccountUUID = c.accountUUIDFor(context.Background(), item)
 
 	return ctx.Response().Success().Json(http.Json{
 		"status": "ok",
@@ -441,6 +425,7 @@ func (c *DriveItemController) Destroy(ctx http.Context) http.Response {
 	}
 
 	if item != nil {
+		item.CloudAccountUUID = c.accountUUIDFor(context.Background(), item)
 		activityService := services.NewActivityService()
 		action := "deleted"
 		if permanent {
@@ -481,6 +466,8 @@ func (c *DriveItemController) Download(ctx http.Context) http.Response {
 			return failResponse(ctx, http.StatusBadRequest, "drive.download_failed", err)
 		}
 
+		item.CloudAccountUUID = c.accountUUIDFor(context.Background(), item)
+
 		mimeType := item.MimeType
 		if mimeType == "" {
 			mimeType = "application/octet-stream"
@@ -504,11 +491,7 @@ func (c *DriveItemController) Download(ctx http.Context) http.Response {
 		return failResponse(ctx, http.StatusBadRequest, "drive.download_failed", err)
 	}
 
-	// Load cloud account to get its UUID for the response
-	var account models.CloudAccount
-	if err := facades.Orm().Query().Where("id", item.CloudAccountID).First(&account); err == nil && account.UUID != "" {
-		item.CloudAccountUUID = account.UUID
-	}
+	item.CloudAccountUUID = c.accountUUIDFor(context.Background(), item)
 
 	if mode == "json" {
 		return ctx.Response().Success().Json(http.Json{
