@@ -26,8 +26,13 @@ func init() {
 		"host": config.Env("APP_HOST", "127.0.0.1"),
 		// HTTP Port
 		"port": config.Env("APP_PORT", "3000"),
-		// HTTP Timeout, default is 3 seconds
-		"request_timeout": 3,
+		// HTTP Timeout. The default is raised well above the goravel default of
+		// 3s because requests that talk to external services (cloud storage
+		// connection tests, S3 syncs) can legitimately exceed it. When this
+		// timeout fires, the gin timeout middleware aborts the request with a
+		// bare 408 and writes no log, so the controller never gets a chance to
+		// record the failure. Keep it configurable per environment.
+		"request_timeout": config.Env("HTTP_REQUEST_TIMEOUT", 60),
 		// HTTPS Configuration
 		"tls": map[string]any{
 			// HTTPS Host

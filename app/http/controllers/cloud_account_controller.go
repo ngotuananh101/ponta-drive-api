@@ -82,13 +82,19 @@ func (c *CloudAccountController) Test(ctx http.Context) http.Response {
 		PublicURL:       req.PublicURL,
 	}
 
-	driver, err := c.factory.BuildDriver(context.Background(), req.Provider, creds)
+	// Bound the outbound calls so a slow or unreachable endpoint fails with a
+	// logged, localized error instead of running past the global HTTP timeout,
+	// which would abort the request with a bare 408 and write nothing to the log.
+	testCtx, cancel := context.WithTimeout(ctx.Context(), 15*time.Second)
+	defer cancel()
+
+	driver, err := c.factory.BuildDriver(testCtx, req.Provider, creds)
 	if err != nil {
 		return failResponse(ctx, http.StatusBadRequest, "cloud.driver_init_failed", fmt.Errorf("provider=%s: %w", req.Provider, err))
 	}
 
 	// Validate bucket connection by listing up to 1 item
-	_, err = driver.ListObjects(context.Background(), "", "", 1)
+	_, err = driver.ListObjects(testCtx, "", "", 1)
 	if err != nil {
 		return failResponse(ctx, http.StatusBadRequest, "cloud.connection_test_failed", fmt.Errorf("provider=%s endpoint=%s bucket=%s: %w", req.Provider, req.Endpoint, req.Bucket, err))
 	}
