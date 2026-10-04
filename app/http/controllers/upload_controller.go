@@ -47,11 +47,25 @@ func (c *UploadController) InitiatePresigned(ctx http.Context) http.Response {
 		})
 	}
 
+	cloudAccountID, err := c.driveService.ResolveCloudAccountID(context.Background(), user.ID, req.CloudAccountUUID)
+	if err != nil {
+		return failResponse(ctx, http.StatusBadRequest, "upload.initiate_failed", err)
+	}
+
+	var parentID *uint
+	if req.ParentUUID != "" {
+		pid, err := c.driveService.ResolveDriveItemID(context.Background(), user.ID, req.ParentUUID)
+		if err != nil {
+			return failResponse(ctx, http.StatusBadRequest, "upload.initiate_failed", err)
+		}
+		parentID = &pid
+	}
+
 	item, presignedResp, err := c.driveService.InitiatePresignedUpload(
 		context.Background(),
 		user.ID,
-		req.CloudAccountID,
-		req.ParentID,
+		cloudAccountID,
+		parentID,
 		req.FileName,
 		req.Size,
 		req.MimeType,
@@ -59,6 +73,8 @@ func (c *UploadController) InitiatePresigned(ctx http.Context) http.Response {
 	if err != nil {
 		return failResponse(ctx, http.StatusBadRequest, "upload.initiate_failed", err)
 	}
+
+	item.CloudAccountUUID = req.CloudAccountUUID
 
 	return ctx.Response().Success().Json(http.Json{
 		"status": "ok",
@@ -101,6 +117,8 @@ func (c *UploadController) CompletePresigned(ctx http.Context) http.Response {
 		return failResponse(ctx, http.StatusBadRequest, "upload.complete_failed", err)
 	}
 
+	item.CloudAccountUUID = c.accountUUIDFor(item)
+
 	activityService := services.NewActivityService()
 	activityService.LogSafe(user.ID, item.CloudAccountID, "uploaded", item.Name, &item.UUID, helpers.GetClientIP(ctx), helpers.GetUserAgent(ctx), map[string]any{"size": item.Size, "mime": item.MimeType})
 
@@ -133,11 +151,25 @@ func (c *UploadController) InitMultipart(ctx http.Context) http.Response {
 		})
 	}
 
+	cloudAccountID, err := c.driveService.ResolveCloudAccountID(context.Background(), user.ID, req.CloudAccountUUID)
+	if err != nil {
+		return failResponse(ctx, http.StatusBadRequest, "upload.initiate_failed", err)
+	}
+
+	var parentID *uint
+	if req.ParentUUID != "" {
+		pid, err := c.driveService.ResolveDriveItemID(context.Background(), user.ID, req.ParentUUID)
+		if err != nil {
+			return failResponse(ctx, http.StatusBadRequest, "upload.initiate_failed", err)
+		}
+		parentID = &pid
+	}
+
 	session, err := c.driveService.InitiateMultipartUpload(
 		context.Background(),
 		user.ID,
-		req.CloudAccountID,
-		req.ParentID,
+		cloudAccountID,
+		parentID,
 		req.FileName,
 		req.Size,
 		req.MimeType,
@@ -256,6 +288,8 @@ func (c *UploadController) CompleteMultipart(ctx http.Context) http.Response {
 		return failResponse(ctx, http.StatusBadRequest, "upload.complete_failed", err)
 	}
 
+	item.CloudAccountUUID = c.accountUUIDFor(item)
+
 	activityService := services.NewActivityService()
 	activityService.LogSafe(user.ID, item.CloudAccountID, "uploaded", item.Name, &item.UUID, helpers.GetClientIP(ctx), helpers.GetUserAgent(ctx), map[string]any{"size": item.Size, "mime": item.MimeType})
 
@@ -295,5 +329,14 @@ func (c *UploadController) AbortMultipart(ctx http.Context) http.Response {
 		"status":  "ok",
 		"message": facades.Lang(ctx).Get("upload.aborted"),
 	})
+}
+
+// accountUUIDFor resolves the public account uuid for an item, best-effort.
+func (c *UploadController) accountUUIDFor(item *models.DriveItem) string {
+	var account models.CloudAccount
+	if err := facades.Orm().Query().Where("id", item.CloudAccountID).First(&account); err != nil {
+		return ""
+	}
+	return account.UUID
 }
 

@@ -147,11 +147,11 @@ func (s *MultipartUploadTestSuite) TearDownTest() {
 func (s *MultipartUploadTestSuite) TestMultipartUploadFullCycle() {
 	// 1. Init Multipart Upload (POST /v1/drive/upload/multipart/init)
 	initPayload, _ := json.Marshal(map[string]any{
-		"cloud_account_id": s.account.ID,
-		"file_name":        "archive.zip",
-		"size":             15728640,
-		"mime_type":        "application/zip",
-		"chunk_size":       5242880,
+		"cloud_account_uuid": s.account.UUID,
+		"file_name":          "archive.zip",
+		"size":               15728640,
+		"mime_type":          "application/zip",
+		"chunk_size":         5242880,
 	})
 
 	initResp, err := s.Http(s.T()).WithToken(s.token).Post("/v1/drive/upload/multipart/init", bytes.NewBuffer(initPayload))
@@ -225,9 +225,9 @@ func (s *MultipartUploadTestSuite) TestMultipartUploadFullCycle() {
 func (s *MultipartUploadTestSuite) TestMultipartUploadAbort() {
 	// 1. Init Multipart Upload
 	initPayload, _ := json.Marshal(map[string]any{
-		"cloud_account_id": s.account.ID,
-		"file_name":        "cancelled.zip",
-		"size":             10485760,
+		"cloud_account_uuid": s.account.UUID,
+		"file_name":          "cancelled.zip",
+		"size":               10485760,
 	})
 
 	initResp, err := s.Http(s.T()).WithToken(s.token).Post("/v1/drive/upload/multipart/init", bytes.NewBuffer(initPayload))
