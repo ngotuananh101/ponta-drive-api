@@ -10,6 +10,14 @@ import (
 	"ponta_drive/app/http/middleware"
 )
 
+const (
+	uuidRoute           = "/{uuid}"
+	uuidSyncRoute       = "/{uuid}/sync"
+	uuidBreadcrumbRoute = "/{uuid}/breadcrumb"
+	uuidDownloadRoute   = "/{uuid}/download"
+	uuidStarRoute       = "/{uuid}/star"
+)
+
 func Web() {
 	facades.Route().Get("/", func(ctx http.Context) http.Response {
 		return ctx.Response().View().Make("welcome.tmpl", map[string]any{
@@ -57,21 +65,22 @@ func Web() {
 				ca.Get("", cloudAccountController.Index)
 				ca.Post("", cloudAccountController.Store)
 				ca.Post("/test", cloudAccountController.Test)
-				ca.Get("/{id}", cloudAccountController.Show)
-				ca.Put("/{id}", cloudAccountController.Update)
-				ca.Delete("/{id}", cloudAccountController.Destroy)
-				ca.Post("/{id}/sync", cloudAccountController.Sync)
+				ca.Get(uuidRoute, cloudAccountController.Show)
+				ca.Put(uuidRoute, cloudAccountController.Update)
+				ca.Delete(uuidRoute, cloudAccountController.Destroy)
+				ca.Post(uuidSyncRoute, cloudAccountController.Sync)
 			})
 
 			v1.Prefix("drive").Group(func(drive route.Router) {
 				drive.Prefix("items").Group(func(items route.Router) {
 					items.Get("", driveItemController.Index)
 					items.Post("/folders", driveItemController.StoreFolder)
-					items.Get("/{uuid}", driveItemController.Show)
-					items.Get("/{uuid}/download", driveItemController.Download)
-					items.Patch("/{uuid}", driveItemController.Update)
-					items.Post("/{uuid}/star", driveItemController.Star)
-					items.Delete("/{uuid}", driveItemController.Destroy)
+					items.Get(uuidRoute, driveItemController.Show)
+					items.Get(uuidBreadcrumbRoute, driveItemController.Breadcrumb)
+					items.Get(uuidDownloadRoute, driveItemController.Download)
+					items.Patch(uuidRoute, driveItemController.Update)
+					items.Post(uuidStarRoute, driveItemController.Star)
+					items.Delete(uuidRoute, driveItemController.Destroy)
 				})
 
 				drive.Prefix("upload").Group(func(upload route.Router) {

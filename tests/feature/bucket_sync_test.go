@@ -120,8 +120,8 @@ func (s *BucketSyncTestSuite) TearDownTest() {
 }
 
 func (s *BucketSyncTestSuite) TestBucketSyncWorkflow() {
-	// 1. Trigger sync via POST /v1/cloud-accounts/{id}/sync
-	syncResp, err := s.Http(s.T()).WithToken(s.token).Post(fmt.Sprintf("/v1/cloud-accounts/%d/sync", s.account.ID), nil)
+	// 1. Trigger sync via POST /v1/cloud-accounts/{uuid}/sync
+	syncResp, err := s.Http(s.T()).WithToken(s.token).Post(fmt.Sprintf("/v1/cloud-accounts/%s/sync", s.account.UUID), nil)
 	s.Require().NoError(err)
 	syncResp.AssertOk()
 
@@ -183,7 +183,7 @@ func (s *BucketSyncTestSuite) TestBucketSyncWorkflow() {
 	s.Equal("jpg", vacationChildren[0].Extension)
 
 	// 5. Test idempotency: re-running sync should not create duplicate items
-	syncResp2, err := s.Http(s.T()).WithToken(s.token).Post(fmt.Sprintf("/v1/cloud-accounts/%d/sync", s.account.ID), nil)
+	syncResp2, err := s.Http(s.T()).WithToken(s.token).Post(fmt.Sprintf("/v1/cloud-accounts/%s/sync", s.account.UUID), nil)
 	s.Require().NoError(err)
 	syncResp2.AssertOk()
 
@@ -219,22 +219,25 @@ func (s *BucketSyncTestSuite) TestCreateAccountAutoSyncs() {
 
 	body, err := resp.Json()
 	s.Require().NoError(err)
-	accountID := uint(body["data"].(map[string]any)["id"].(float64))
-	s.Greater(accountID, uint(0))
+	accountData := body["data"].(map[string]any)
+	accountUUID := accountData["uuid"].(string)
+	s.NotEmpty(accountUUID)
+
+	// Fetch the account to get its numeric ID for database queries
+	var account models.CloudAccount
+	err = facades.Orm().Query().Where("uuid", accountUUID).First(&account)
+	s.Require().NoError(err)
 
 	// The inline job must have populated the bucket's items.
 	var items []models.DriveItem
 	err = facades.Orm().Query().
 		Where("user_id", s.user.ID).
-		Where("cloud_account_id", accountID).
+		Where("cloud_account_id", account.ID).
 		Find(&items)
 	s.Require().NoError(err)
 	s.Len(items, 4, "creating an account must trigger a sync so the drive view is not empty")
 
 	// And the account must not be left stuck at "syncing".
-	var account models.CloudAccount
-	err = facades.Orm().Query().Where("id", accountID).First(&account)
-	s.Require().NoError(err)
 	s.Equal("idle", account.SyncStatus)
 	s.NotNil(account.LastSyncedAt)
 }

@@ -101,7 +101,7 @@ func (s *CloudAccountTestSuite) TestModelCredentialsEncryptionRoundTrip() {
 
 	// ToResponse check: SecretAccessKey must not leak
 	resp := fetched.ToResponse()
-	s.Equal(fetched.ID, resp["id"])
+	s.Equal(fetched.UUID, resp["uuid"])
 	s.Equal(fetched.Name, resp["name"])
 	safeCreds, ok := resp["credentials"].(map[string]any)
 	s.Require().True(ok)
@@ -150,4 +150,28 @@ func (s *CloudAccountTestSuite) TestValidationDTOs() {
 	}, (&requests.UpdateCloudAccountRequest{}).Rules(nil))
 	s.Require().NoError(err)
 	s.False(updateValidator.Fails(), "Valid update payload should pass validation")
+}
+
+func (s *CloudAccountTestSuite) TestCreateAssignsUUID() {
+	account := models.CloudAccount{
+		UserID:   s.user.ID,
+		Name:     "UUID Account",
+		Provider: models.ProviderS3,
+		IsActive: true,
+	}
+	s.Require().NoError(facades.Orm().Query().Create(&account))
+	s.NotEmpty(account.UUID, "the BeforeCreate hook must assign a uuid")
+	s.Len(account.UUID, 36)
+
+	// A caller-supplied uuid must be preserved, not overwritten.
+	explicit := models.CloudAccount{
+		UUID:     uuid.New().String(),
+		UserID:   s.user.ID,
+		Name:     "Explicit UUID",
+		Provider: models.ProviderS3,
+		IsActive: true,
+	}
+	want := explicit.UUID
+	s.Require().NoError(facades.Orm().Query().Create(&explicit))
+	s.Equal(want, explicit.UUID)
 }

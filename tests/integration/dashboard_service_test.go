@@ -190,6 +190,27 @@ func TestDashboardServiceGetSummaryIsScopedToUser(t *testing.T) {
 	assert.Equal(t, 0.0, summary.TotalStorage.Percent)
 }
 
+func TestDashboardSummaryExposesUUIDs(t *testing.T) {
+	f := seedDashboardFixture(t)
+
+	summary, err := services.NewDashboardService().GetSummary(context.Background(), f.user.ID)
+	require.NoError(t, err)
+
+	require.NotEmpty(t, summary.Clouds)
+	assert.Contains(t, summary.Clouds[0], "uuid")
+	assert.NotContains(t, summary.Clouds[0], "id")
+
+	for _, file := range summary.SuggestedFiles {
+		assert.Contains(t, file, "cloud_account_uuid")
+		assert.NotContains(t, file, "cloud_account_id")
+	}
+
+	for _, act := range summary.RecentActivities {
+		assert.Contains(t, act, "cloud_account_uuid", "activity keeps cloud_id and gains the uuid")
+		assert.Equal(t, f.cloudA.UUID, act["cloud_account_uuid"])
+	}
+}
+
 func TestDashboardServiceGetSummaryExcludesStaleFiles(t *testing.T) {
 	f := seedDashboardFixture(t)
 

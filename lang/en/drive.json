@@ -1,5 +1,5 @@
 {
-  "cloud_account_required": "cloud_account_id is required",
+  "cloud_account_required": "A cloud account is required",
   "list_failed": "Failed to list items",
   "item_not_found": "Drive item not found",
   "item_deleted": "Drive item deleted successfully",
@@ -9,5 +9,6 @@
   "star_failed": "Could not update the star. Please try again.",
   "delete_failed": "Could not delete the item. Please try again.",
   "download_failed": "Could not download the item. Please try again.",
-  "invalid_cursor": "The pagination cursor is invalid."
+  "invalid_cursor": "The pagination cursor is invalid.",
+  "parent_not_found": "Parent folder not found or access denied."
 }

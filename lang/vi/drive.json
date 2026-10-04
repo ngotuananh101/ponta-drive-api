@@ -1,5 +1,5 @@
 {
-  "cloud_account_required": "cloud_account_id là bắt buộc",
+  "cloud_account_required": "Vui lòng chọn một tài khoản đám mây",
   "list_failed": "Không thể lấy danh sách tệp tin và thư mục",
   "item_not_found": "Không tìm thấy mục trong ổ đĩa",
   "item_deleted": "Mục đã được xóa thành công",
@@ -9,5 +9,6 @@
   "star_failed": "Không thể cập nhật dấu sao. Vui lòng thử lại.",
   "delete_failed": "Không thể xóa mục. Vui lòng thử lại.",
   "download_failed": "Không thể tải xuống mục. Vui lòng thử lại.",
-  "invalid_cursor": "Con trỏ phân trang không hợp lệ."
+  "invalid_cursor": "Con trỏ phân trang không hợp lệ.",
+  "parent_not_found": "Không tìm thấy thư mục cha hoặc bạn không có quyền truy cập."
 }
