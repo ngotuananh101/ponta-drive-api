@@ -5,6 +5,9 @@ import (
 	"errors"
 	"time"
 
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+
 	"github.com/goravel/framework/database/orm"
 
 	"ponta_drive/app/facades"
@@ -46,6 +49,10 @@ type CloudAccount struct {
 	TotalStorage int64      `gorm:"column:total_storage;default:0" json:"total_storage"`
 	UsedStorage  int64      `gorm:"column:used_storage;default:0" json:"used_storage"`
 	orm.SoftDeletes
+
+	// UUID is the public identifier exposed by the API and used in drive URLs.
+	// Numeric ID remains the internal key.
+	UUID string `gorm:"column:uuid;size:36;uniqueIndex" json:"uuid"`
 }
 
 // SetCredentials serializes and encrypts the given S3Credentials using AES-256 via facades.Crypt().
@@ -115,4 +122,14 @@ func (c *CloudAccount) ToResponse() map[string]any {
 		"created_at":     c.CreatedAt,
 		"updated_at":     c.UpdatedAt,
 	}
+}
+
+// BeforeCreate assigns a uuid when none was supplied. GORM fires this on every
+// create through Goravel's Query().Create(), so the controller, future code and
+// test fixtures all get a uuid without repeating the assignment.
+func (c *CloudAccount) BeforeCreate(tx *gorm.DB) error {
+	if c.UUID == "" {
+		c.UUID = uuid.New().String()
+	}
+	return nil
 }

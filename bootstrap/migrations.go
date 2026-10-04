@@ -18,5 +18,6 @@ func Migrations() []schema.Migration {
 		&migrations.M20260920120000CreateActivityLogsTable{},      // User activity audit trail (home dashboard)
 		&migrations.M20260920120100AddSyncStatusToCloudAccounts{}, // Sync status tracking for cloud accounts
 		&migrations.M20261001000000AddDriveItemsListIndex{},       // Composite index for the paginated drive list
+		&migrations.M20261004000000AddUUIDToCloudAccounts{},      // Public uuid for cloud accounts
 	}
 }
