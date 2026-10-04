@@ -54,15 +54,17 @@ func (s *DashboardService) GetSummary(ctx context.Context, userID uint) (*Dashbo
 	}
 
 	clouds := make([]map[string]any, 0, len(accounts))
+	accountUUID := make(map[uint]string, len(accounts))
 	var totalUsed, totalCapacity int64
 
 	for _, acc := range accounts {
 		clouds = append(clouds, acc.ToResponse())
+		accountUUID[acc.ID] = acc.UUID
 		totalUsed += acc.UsedStorage
 		totalCapacity += acc.TotalStorage
 	}
 
-	suggestedFiles, err := s.getSuggestedFiles(ctx, userID)
+	suggestedFiles, err := s.getSuggestedFiles(ctx, userID, accountUUID)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +76,13 @@ func (s *DashboardService) GetSummary(ctx context.Context, userID uint) (*Dashbo
 
 	actData := make([]map[string]any, 0, len(activities))
 	for _, a := range activities {
-		actData = append(actData, a.ToResponse())
+		row := a.ToResponse()
+		if a.CloudAccountID != nil {
+			row["cloud_account_uuid"] = accountUUID[*a.CloudAccountID]
+		} else {
+			row["cloud_account_uuid"] = nil
+		}
+		actData = append(actData, row)
 	}
 
 	percent := 0.0
@@ -98,7 +106,7 @@ func (s *DashboardService) GetSummary(ctx context.Context, userID uint) (*Dashbo
 
 // getSuggestedFiles prefers starred items, then tops up with files updated in
 // the last seven days, capped at 8 entries.
-func (s *DashboardService) getSuggestedFiles(ctx context.Context, userID uint) ([]map[string]any, error) {
+func (s *DashboardService) getSuggestedFiles(ctx context.Context, userID uint, accountUUID map[uint]string) ([]map[string]any, error) {
 	query := facades.Orm().WithContext(ctx).Query()
 
 	var items []models.DriveItem
@@ -135,8 +143,9 @@ func (s *DashboardService) getSuggestedFiles(ctx context.Context, userID uint) (
 	}
 
 	result := make([]map[string]any, 0, len(items))
-	for _, item := range items {
-		result = append(result, item.ToResponse())
+	for i := range items {
+		items[i].CloudAccountUUID = accountUUID[items[i].CloudAccountID]
+		result = append(result, items[i].ToResponse())
 	}
 	return result, nil
 }
