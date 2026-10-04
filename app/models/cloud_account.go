@@ -90,6 +90,7 @@ func (c *CloudAccount) GetCredentials() (*S3Credentials, error) {
 
 // ToResponse returns a sanitized map representation for API responses, masking SecretAccessKey.
 func (c *CloudAccount) ToResponse() map[string]any {
+	ensureAccountUUID(c)
 	var safeCreds map[string]any
 	if creds, err := c.GetCredentials(); err == nil && creds != nil {
 		safeCreds = map[string]any{
@@ -108,8 +109,7 @@ func (c *CloudAccount) ToResponse() map[string]any {
 	}
 
 	return map[string]any{
-		"id":             c.ID,
-		"user_id":        c.UserID,
+		"uuid":           c.UUID,
 		"name":           c.Name,
 		"provider":       c.Provider,
 		"credentials":    safeCreds,
@@ -121,6 +121,16 @@ func (c *CloudAccount) ToResponse() map[string]any {
 		"used_storage":   c.UsedStorage,
 		"created_at":     c.CreatedAt,
 		"updated_at":     c.UpdatedAt,
+	}
+}
+
+// ensureAccountUUID assigns a uuid in memory when a row carries none, so a
+// response never exposes a blank identifier. It does not write: a GET must not
+// mutate the database. The migration backfill and the BeforeCreate hook are the
+// real fixes; this only covers rows that predate or bypassed them.
+func ensureAccountUUID(c *CloudAccount) {
+	if c.UUID == "" {
+		c.UUID = uuid.New().String()
 	}
 }
 

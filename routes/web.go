@@ -57,10 +57,10 @@ func Web() {
 				ca.Get("", cloudAccountController.Index)
 				ca.Post("", cloudAccountController.Store)
 				ca.Post("/test", cloudAccountController.Test)
-				ca.Get("/{id}", cloudAccountController.Show)
-				ca.Put("/{id}", cloudAccountController.Update)
-				ca.Delete("/{id}", cloudAccountController.Destroy)
-				ca.Post("/{id}/sync", cloudAccountController.Sync)
+				ca.Get("/{uuid}", cloudAccountController.Show)
+				ca.Put("/{uuid}", cloudAccountController.Update)
+				ca.Delete("/{uuid}", cloudAccountController.Destroy)
+				ca.Post("/{uuid}/sync", cloudAccountController.Sync)
 			})
 
 			v1.Prefix("drive").Group(func(drive route.Router) {

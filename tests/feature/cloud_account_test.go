@@ -101,7 +101,7 @@ func (s *CloudAccountTestSuite) TestModelCredentialsEncryptionRoundTrip() {
 
 	// ToResponse check: SecretAccessKey must not leak
 	resp := fetched.ToResponse()
-	s.Equal(fetched.ID, resp["id"])
+	s.Equal(fetched.UUID, resp["uuid"])
 	s.Equal(fetched.Name, resp["name"])
 	safeCreds, ok := resp["credentials"].(map[string]any)
 	s.Require().True(ok)

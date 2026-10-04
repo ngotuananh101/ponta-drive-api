@@ -218,17 +218,17 @@ func (c *CloudAccountController) Show(ctx http.Context) http.Response {
 		return failResponse(ctx, http.StatusUnauthorized, "common.unauthorized", nil)
 	}
 
-	id := ctx.Request().RouteInt("id")
-	if id <= 0 {
+	uuid := ctx.Request().Route("uuid")
+	if uuid == "" {
 		return failResponse(ctx, http.StatusBadRequest, "common.invalid_account_id", nil)
 	}
 
 	var account models.CloudAccount
 	err := facades.Orm().Query().
-		Where("id", id).
+		Where("uuid", uuid).
 		Where("user_id", user.ID).
 		First(&account)
-	if err != nil || account.ID == 0 {
+	if err != nil || account.UUID == "" {
 		return failResponse(ctx, http.StatusNotFound, "cloud.not_found", err)
 	}
 
@@ -245,17 +245,17 @@ func (c *CloudAccountController) Update(ctx http.Context) http.Response {
 		return failResponse(ctx, http.StatusUnauthorized, "common.unauthorized", nil)
 	}
 
-	id := ctx.Request().RouteInt("id")
-	if id <= 0 {
+	uuid := ctx.Request().Route("uuid")
+	if uuid == "" {
 		return failResponse(ctx, http.StatusBadRequest, "common.invalid_account_id", nil)
 	}
 
 	var account models.CloudAccount
 	err := facades.Orm().Query().
-		Where("id", id).
+		Where("uuid", uuid).
 		Where("user_id", user.ID).
 		First(&account)
-	if err != nil || account.ID == 0 {
+	if err != nil || account.UUID == "" {
 		return failResponse(ctx, http.StatusNotFound, "cloud.not_found", err)
 	}
 
@@ -341,17 +341,17 @@ func (c *CloudAccountController) Destroy(ctx http.Context) http.Response {
 		return failResponse(ctx, http.StatusUnauthorized, "common.unauthorized", nil)
 	}
 
-	id := ctx.Request().RouteInt("id")
-	if id <= 0 {
+	uuid := ctx.Request().Route("uuid")
+	if uuid == "" {
 		return failResponse(ctx, http.StatusBadRequest, "common.invalid_account_id", nil)
 	}
 
 	var account models.CloudAccount
 	err := facades.Orm().Query().
-		Where("id", id).
+		Where("uuid", uuid).
 		Where("user_id", user.ID).
 		First(&account)
-	if err != nil || account.ID == 0 {
+	if err != nil || account.UUID == "" {
 		return failResponse(ctx, http.StatusNotFound, "cloud.not_found", err)
 	}
 
@@ -374,17 +374,17 @@ func (c *CloudAccountController) Sync(ctx http.Context) http.Response {
 		return failResponse(ctx, http.StatusUnauthorized, "common.unauthorized", nil)
 	}
 
-	id := ctx.Request().RouteInt("id")
-	if id <= 0 {
+	uuid := ctx.Request().Route("uuid")
+	if uuid == "" {
 		return failResponse(ctx, http.StatusBadRequest, "common.invalid_account_id", nil)
 	}
 
 	var account models.CloudAccount
 	err := facades.Orm().Query().
-		Where("id", id).
+		Where("uuid", uuid).
 		Where("user_id", user.ID).
 		First(&account)
-	if err != nil || account.ID == 0 {
+	if err != nil || account.UUID == "" {
 		return failResponse(ctx, http.StatusNotFound, "cloud.not_found", err)
 	}
 

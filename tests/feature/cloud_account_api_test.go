@@ -92,8 +92,8 @@ func (s *CloudAccountAPITestSuite) TestCloudAccountLifecycle() {
 	s.Require().NoError(err)
 	s.Equal("ok", createdBody["status"])
 	accountData := createdBody["data"].(map[string]any)
-	accountID := uint(accountData["id"].(float64))
-	s.Greater(accountID, uint(0))
+	accountUUID := accountData["uuid"].(string)
+	s.NotEmpty(accountUUID)
 	s.Equal("Primary AWS", accountData["name"])
 	s.Equal(models.ProviderS3, accountData["provider"])
 	s.True(accountData["is_default"].(bool))
@@ -113,8 +113,8 @@ func (s *CloudAccountAPITestSuite) TestCloudAccountLifecycle() {
 	accountsList := listBody["data"].([]any)
 	s.Len(accountsList, 1)
 
-	// 3. Show Cloud Account (GET /v1/cloud-accounts/{id})
-	showResp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/cloud-accounts/%d", accountID))
+	// 3. Show Cloud Account (GET /v1/cloud-accounts/{uuid})
+	showResp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/cloud-accounts/%s", accountUUID))
 	s.Require().NoError(err)
 	showResp.AssertOk()
 
@@ -123,11 +123,11 @@ func (s *CloudAccountAPITestSuite) TestCloudAccountLifecycle() {
 	showData := showBody["data"].(map[string]any)
 	s.Equal("Primary AWS", showData["name"])
 
-	// 4. Update Cloud Account (PUT /v1/cloud-accounts/{id})
+	// 4. Update Cloud Account (PUT /v1/cloud-accounts/{uuid})
 	updatePayload, _ := json.Marshal(map[string]any{
 		"name": "Updated Primary AWS",
 	})
-	updateResp, err := s.Http(s.T()).WithToken(s.token).Put(fmt.Sprintf("/v1/cloud-accounts/%d", accountID), bytes.NewBuffer(updatePayload))
+	updateResp, err := s.Http(s.T()).WithToken(s.token).Put(fmt.Sprintf("/v1/cloud-accounts/%s", accountUUID), bytes.NewBuffer(updatePayload))
 	s.Require().NoError(err)
 	updateResp.AssertOk()
 
@@ -136,8 +136,8 @@ func (s *CloudAccountAPITestSuite) TestCloudAccountLifecycle() {
 	updatedData := updateBody["data"].(map[string]any)
 	s.Equal("Updated Primary AWS", updatedData["name"])
 
-	// 5. Delete Cloud Account (DELETE /v1/cloud-accounts/{id})
-	deleteResp, err := s.Http(s.T()).WithToken(s.token).Delete(fmt.Sprintf("/v1/cloud-accounts/%d", accountID), nil)
+	// 5. Delete Cloud Account (DELETE /v1/cloud-accounts/{uuid})
+	deleteResp, err := s.Http(s.T()).WithToken(s.token).Delete(fmt.Sprintf("/v1/cloud-accounts/%s", accountUUID), nil)
 	s.Require().NoError(err)
 	deleteResp.AssertOk()
 
