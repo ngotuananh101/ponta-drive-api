@@ -237,3 +237,41 @@ func TestS3DriverOperationsWithMockServer(t *testing.T) {
 	assert.Equal(t, "test.txt", listRes.Objects[0].Key)
 	assert.Equal(t, int64(12), listRes.Objects[0].Size)
 }
+
+func TestS3DriverDeleteObjectsChunkingAndEmpty(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Query().Has("delete") {
+			w.Header().Set("Content-Type", "application/xml")
+			xmlResp := `<?xml version="1.0" encoding="UTF-8"?>
+<DeleteResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+    <Deleted><Key>file1.txt</Key></Deleted>
+</DeleteResult>`
+			_, _ = w.Write([]byte(xmlResp))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer mockServer.Close()
+
+	cfg := storage.S3Config{
+		Bucket:          "test-bucket",
+		Region:          "us-east-1",
+		AccessKeyID:     "test-key",
+		SecretAccessKey: "test-secret",
+		Endpoint:        mockServer.URL,
+		UsePathStyle:    true,
+	}
+
+	driver, err := storage.NewS3Driver(context.Background(), cfg)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// 1. Empty keys slice should be a no-op
+	err = driver.DeleteObjects(ctx, []string{})
+	assert.NoError(t, err)
+
+	// 2. Non-empty keys slice
+	err = driver.DeleteObjects(ctx, []string{"file1.txt", "file2.txt"})
+	assert.NoError(t, err)
+}

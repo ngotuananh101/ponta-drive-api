@@ -47,4 +47,5 @@ type CloudDriver interface {
 	CompleteMultipart(ctx context.Context, key string, uploadID string, parts []CompletedPart) error
 	AbortMultipart(ctx context.Context, key string, uploadID string) error
 	ListObjects(ctx context.Context, prefix string, continuationToken string, maxKeys int32) (*ListObjectsResult, error)
+	DeleteObjects(ctx context.Context, keys []string) error
 }
