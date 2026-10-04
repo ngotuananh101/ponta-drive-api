@@ -95,7 +95,7 @@ func (s *DriveItemAPITestSuite) TestDriveItemLifecycle() {
 	s.Require().NoError(err)
 	folderData := createBody["data"].(map[string]any)
 	folderUUID := folderData["uuid"].(string)
-	folderID := uint(folderData["id"].(float64))
+	_ = folderUUID // use folderUUID for parent_uuid in subsequent calls
 	s.NotEmpty(folderUUID)
 	s.Equal("Work Documents", folderData["name"])
 	s.Equal(models.ItemTypeFolder, folderData["type"])
@@ -110,10 +110,10 @@ func (s *DriveItemAPITestSuite) TestDriveItemLifecycle() {
 	itemsList := listBody["data"].([]any)
 	s.Len(itemsList, 1)
 
-	// 3. Create a Child Item inside the folder
+	// 3. Create a Child Item inside the folder (use parent_uuid)
 	childFolderPayload, _ := json.Marshal(map[string]any{
 		"cloud_account_id": s.account.ID,
-		"parent_id":        folderID,
+		"parent_uuid":      folderUUID,
 		"name":             "Sub Projects",
 	})
 	childResp, err := s.Http(s.T()).WithToken(s.token).Post("/v1/drive/items/folders", bytes.NewBuffer(childFolderPayload))
@@ -123,8 +123,8 @@ func (s *DriveItemAPITestSuite) TestDriveItemLifecycle() {
 	childBody, _ := childResp.Json()
 	childUUID := childBody["data"].(map[string]any)["uuid"].(string)
 
-	// 4. List items inside folder (GET /v1/drive/items?cloud_account_id=...&parent_id=...)
-	folderItemsResp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/drive/items?cloud_account_id=%d&parent_id=%d", s.account.ID, folderID))
+	// 4. List items inside folder (GET /v1/drive/items?cloud_account_id=...&parent_uuid=...)
+	folderItemsResp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/drive/items?cloud_account_id=%d&parent_uuid=%s", s.account.ID, folderUUID))
 	s.Require().NoError(err)
 	folderItemsResp.AssertOk()
 
@@ -205,8 +205,8 @@ func (s *DriveItemAPITestSuite) TestCreateFolderErrorDoesNotLeakInternalDetail()
 func (s *DriveItemAPITestSuite) TestBreadcrumb() {
 	// root -> Work -> Sub -> Deep
 	work := s.createFolder("Work", nil)
-	sub := s.createFolder("Sub", &work.ID)
-	deep := s.createFolder("Deep", &sub.ID)
+	sub := s.createFolder("Sub", &work.UUID)
+	deep := s.createFolder("Deep", &sub.UUID)
 
 	resp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/drive/items/%s/breadcrumb", deep.UUID))
 	s.Require().NoError(err)
@@ -224,9 +224,9 @@ func (s *DriveItemAPITestSuite) TestBreadcrumb() {
 	s.Equal([]string{"Work", "Sub", "Deep"}, names)
 
 	// The first entry is the top of the chain: a client uses it to know it can
-	// stop walking up.
-	s.Nil(chain[0].(map[string]any)["parent_id"],
-		"the root-most entry must have no parent")
+	// stop walking up. parent_id is no longer in response (uuid is used instead).
+	_, hasParentID := chain[0].(map[string]any)["parent_id"]
+	s.False(hasParentID, "the root-most entry must not have parent_id field")
 
 	// A root-level folder yields a single-entry chain.
 	rootResp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/drive/items/%s/breadcrumb", work.UUID))
@@ -254,13 +254,14 @@ func (s *DriveItemAPITestSuite) TestBreadcrumbNotFoundDoesNotLeakInternalDetail(
 }
 
 // createFolder posts a folder via the API and returns the created item.
-func (s *DriveItemAPITestSuite) createFolder(name string, parentID *uint) models.DriveItem {
+// parentUUID is the UUID of the parent folder, or nil for root level.
+func (s *DriveItemAPITestSuite) createFolder(name string, parentUUID *string) models.DriveItem {
 	payload := map[string]any{
 		"cloud_account_id": s.account.ID,
 		"name":             name,
 	}
-	if parentID != nil {
-		payload["parent_id"] = *parentID
+	if parentUUID != nil {
+		payload["parent_uuid"] = *parentUUID
 	}
 	raw, _ := json.Marshal(payload)
 
@@ -278,6 +279,8 @@ func (s *DriveItemAPITestSuite) createFolder(name string, parentID *uint) models
 	var item models.DriveItem
 	item.UUID = data["uuid"].(string)
 	item.Name = data["name"].(string)
-	item.ID = uint(data["id"].(float64))
+	// Note: ID is no longer in response, so we need to look it up from DB
+	// when needed. For now, use the UUID for subsequent operations.
+	_ = data["id"] // silence unused variable warning if needed
 	return item
 }

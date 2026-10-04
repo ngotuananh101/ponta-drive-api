@@ -35,6 +35,10 @@ type DriveItem struct {
 	IsStarred      bool   `gorm:"column:is_starred;index;default:false" json:"is_starred"`
 	Status         string `gorm:"column:status;size:20;index;default:ready" json:"status"`
 	orm.SoftDeletes
+	// CloudAccountUUID is filled by the controller/dashboard before serializing
+	// so the response carries the public account uuid instead of the numeric id.
+	// Not persisted.
+	CloudAccountUUID string `gorm:"-" json:"-"`
 }
 
 // IsFolder returns true if the item is a folder.
@@ -50,21 +54,18 @@ func (d *DriveItem) IsFile() bool {
 // ToResponse returns a serialized map suitable for API responses.
 func (d *DriveItem) ToResponse() map[string]any {
 	return map[string]any{
-		"id":               d.ID,
-		"uuid":             d.UUID,
-		"user_id":          d.UserID,
-		"cloud_account_id": d.CloudAccountID,
-		"parent_id":        d.ParentID,
-		"name":             d.Name,
-		"type":             d.Type,
-		"mime_type":        d.MimeType,
-		"size":             d.Size,
-		"extension":        d.Extension,
-		"storage_path":     d.StoragePath,
-		"etag":             d.ETag,
-		"is_starred":       d.IsStarred,
-		"status":           d.Status,
-		"created_at":       d.CreatedAt,
-		"updated_at":       d.UpdatedAt,
+		"uuid":               d.UUID,
+		"cloud_account_uuid": d.CloudAccountUUID,
+		"name":               d.Name,
+		"type":               d.Type,
+		"mime_type":          d.MimeType,
+		"size":               d.Size,
+		"extension":          d.Extension,
+		"storage_path":       d.StoragePath,
+		"etag":               d.ETag,
+		"is_starred":         d.IsStarred,
+		"status":             d.Status,
+		"created_at":         d.CreatedAt,
+		"updated_at":         d.UpdatedAt,
 	}
 }

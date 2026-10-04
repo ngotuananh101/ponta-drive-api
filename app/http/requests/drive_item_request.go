@@ -9,6 +9,7 @@ import (
 type CreateFolderRequest struct {
 	CloudAccountID uint   `form:"cloud_account_id" json:"cloud_account_id"`
 	ParentID       *uint  `form:"parent_id" json:"parent_id"`
+	ParentUUID     string `form:"parent_uuid" json:"parent_uuid"`
 	Name           string `form:"name" json:"name"`
 }
 
@@ -43,6 +44,7 @@ func (r *CreateFolderRequest) PrepareForValidation(ctx http.Context, data valida
 type UpdateDriveItemRequest struct {
 	Name     string `form:"name" json:"name"`
 	ParentID *uint  `form:"parent_id" json:"parent_id"`
+	ParentUUID string `form:"parent_uuid" json:"parent_uuid"`
 }
 
 func (r *UpdateDriveItemRequest) Authorize(ctx http.Context) error {
