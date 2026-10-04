@@ -94,6 +94,7 @@ func (s *CloudAccountAPITestSuite) TestCloudAccountLifecycle() {
 	accountData := createdBody["data"].(map[string]any)
 	accountUUID := accountData["uuid"].(string)
 	s.NotEmpty(accountUUID)
+	s.NotContains(accountData, "id", "no numeric id may be exposed")
 	s.Equal("Primary AWS", accountData["name"])
 	s.Equal(models.ProviderS3, accountData["provider"])
 	s.True(accountData["is_default"].(bool))
@@ -228,4 +229,17 @@ func (s *CloudAccountAPITestSuite) TestCloudAccountTestConnectionFailureSanitize
 	s.NotContains(body["message"].(string), "10.0.0.45")
 	s.NotContains(body["message"].(string), "InternalError")
 	s.NotContains(body["message"].(string), mockServer.URL)
+}
+
+func (s *CloudAccountAPITestSuite) TestShowUnknownUUIDDoesNotLeak() {
+	resp, err := s.Http(s.T()).WithToken(s.token).Get("/v1/cloud-accounts/00000000-0000-0000-0000-000000000000")
+	s.Require().NoError(err)
+	resp.AssertStatus(http.StatusNotFound)
+
+	body, err := resp.Json()
+	s.Require().NoError(err)
+	message, _ := body["message"].(string)
+	s.NotEmpty(message)
+	s.NotContains(message, "not found", "internal text must not be echoed")
+	s.NotContains(message, "cloud.not_found", "the translation key must resolve")
 }
