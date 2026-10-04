@@ -14,6 +14,12 @@ import (
 	"ponta_drive/app/services"
 )
 
+const (
+	errKeyUploadInitiateFailed = "upload.initiate_failed"
+	errKeyUploadInvalidRequest = "upload.invalid_request"
+	errKeyUploadCompleteFailed = "upload.complete_failed"
+)
+
 type UploadController struct {
 	driveService *services.CloudDriveService
 }
@@ -22,6 +28,36 @@ func NewUploadController() *UploadController {
 	return &UploadController{
 		driveService: services.NewCloudDriveService(),
 	}
+}
+
+func (c *UploadController) resolveUploadTargets(ctx context.Context, userID uint, cloudAccountUUID, parentUUID string) (uint, *uint, error) {
+	cloudAccountID, err := c.driveService.ResolveCloudAccountID(ctx, userID, cloudAccountUUID)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	var parentID *uint
+	if parentUUID != "" {
+		pid, err := c.driveService.ResolveDriveItemID(ctx, userID, parentUUID)
+		if err != nil {
+			return 0, nil, err
+		}
+		parentID = &pid
+	}
+
+	return cloudAccountID, parentID, nil
+}
+
+func (c *UploadController) finalizeUpload(ctx http.Context, userID uint, item *models.DriveItem) http.Response {
+	item.CloudAccountUUID = c.accountUUIDFor(item)
+
+	activityService := services.NewActivityService()
+	activityService.LogSafe(userID, item.CloudAccountID, "uploaded", item.Name, &item.UUID, helpers.GetClientIP(ctx), helpers.GetUserAgent(ctx), map[string]any{"size": item.Size, "mime": item.MimeType})
+
+	return ctx.Response().Success().Json(http.Json{
+		"status": "ok",
+		"data":   item.ToResponse(),
+	})
 }
 
 // InitiatePresigned generates a presigned upload URL and registers a pending DriveItem.
@@ -37,7 +73,7 @@ func (c *UploadController) InitiatePresigned(ctx http.Context) http.Response {
 	var req requests.PresignedUploadRequest
 	errors, err := ctx.Request().ValidateRequest(&req)
 	if err != nil {
-		return failResponse(ctx, http.StatusBadRequest, "upload.invalid_request", err)
+		return failResponse(ctx, http.StatusBadRequest, errKeyUploadInvalidRequest, err)
 	}
 	if errors != nil {
 		return ctx.Response().Json(http.StatusUnprocessableEntity, http.Json{
@@ -47,18 +83,9 @@ func (c *UploadController) InitiatePresigned(ctx http.Context) http.Response {
 		})
 	}
 
-	cloudAccountID, err := c.driveService.ResolveCloudAccountID(context.Background(), user.ID, req.CloudAccountUUID)
+	cloudAccountID, parentID, err := c.resolveUploadTargets(context.Background(), user.ID, req.CloudAccountUUID, req.ParentUUID)
 	if err != nil {
-		return failResponse(ctx, http.StatusBadRequest, "upload.initiate_failed", err)
-	}
-
-	var parentID *uint
-	if req.ParentUUID != "" {
-		pid, err := c.driveService.ResolveDriveItemID(context.Background(), user.ID, req.ParentUUID)
-		if err != nil {
-			return failResponse(ctx, http.StatusBadRequest, "upload.initiate_failed", err)
-		}
-		parentID = &pid
+		return failResponse(ctx, http.StatusBadRequest, errKeyUploadInitiateFailed, err)
 	}
 
 	item, presignedResp, err := c.driveService.InitiatePresignedUpload(
@@ -71,7 +98,7 @@ func (c *UploadController) InitiatePresigned(ctx http.Context) http.Response {
 		req.MimeType,
 	)
 	if err != nil {
-		return failResponse(ctx, http.StatusBadRequest, "upload.initiate_failed", err)
+		return failResponse(ctx, http.StatusBadRequest, errKeyUploadInitiateFailed, err)
 	}
 
 	item.CloudAccountUUID = req.CloudAccountUUID
@@ -102,7 +129,7 @@ func (c *UploadController) CompletePresigned(ctx http.Context) http.Response {
 	var req requests.CompletePresignedUploadRequest
 	errors, err := ctx.Request().ValidateRequest(&req)
 	if err != nil {
-		return failResponse(ctx, http.StatusBadRequest, "upload.invalid_request", err)
+		return failResponse(ctx, http.StatusBadRequest, errKeyUploadInvalidRequest, err)
 	}
 	if errors != nil {
 		return ctx.Response().Json(http.StatusUnprocessableEntity, http.Json{
@@ -114,18 +141,10 @@ func (c *UploadController) CompletePresigned(ctx http.Context) http.Response {
 
 	item, err := c.driveService.CompletePresignedUpload(context.Background(), user.ID, req.ItemUUID)
 	if err != nil {
-		return failResponse(ctx, http.StatusBadRequest, "upload.complete_failed", err)
+		return failResponse(ctx, http.StatusBadRequest, errKeyUploadCompleteFailed, err)
 	}
 
-	item.CloudAccountUUID = c.accountUUIDFor(item)
-
-	activityService := services.NewActivityService()
-	activityService.LogSafe(user.ID, item.CloudAccountID, "uploaded", item.Name, &item.UUID, helpers.GetClientIP(ctx), helpers.GetUserAgent(ctx), map[string]any{"size": item.Size, "mime": item.MimeType})
-
-	return ctx.Response().Success().Json(http.Json{
-		"status": "ok",
-		"data":   item.ToResponse(),
-	})
+	return c.finalizeUpload(ctx, user.ID, item)
 }
 
 // InitMultipart initiates a server-side multipart/chunked upload session.
@@ -141,7 +160,7 @@ func (c *UploadController) InitMultipart(ctx http.Context) http.Response {
 	var req requests.InitMultipartUploadRequest
 	errors, err := ctx.Request().ValidateRequest(&req)
 	if err != nil {
-		return failResponse(ctx, http.StatusBadRequest, "upload.invalid_request", err)
+		return failResponse(ctx, http.StatusBadRequest, errKeyUploadInvalidRequest, err)
 	}
 	if errors != nil {
 		return ctx.Response().Json(http.StatusUnprocessableEntity, http.Json{
@@ -151,18 +170,9 @@ func (c *UploadController) InitMultipart(ctx http.Context) http.Response {
 		})
 	}
 
-	cloudAccountID, err := c.driveService.ResolveCloudAccountID(context.Background(), user.ID, req.CloudAccountUUID)
+	cloudAccountID, parentID, err := c.resolveUploadTargets(context.Background(), user.ID, req.CloudAccountUUID, req.ParentUUID)
 	if err != nil {
-		return failResponse(ctx, http.StatusBadRequest, "upload.initiate_failed", err)
-	}
-
-	var parentID *uint
-	if req.ParentUUID != "" {
-		pid, err := c.driveService.ResolveDriveItemID(context.Background(), user.ID, req.ParentUUID)
-		if err != nil {
-			return failResponse(ctx, http.StatusBadRequest, "upload.initiate_failed", err)
-		}
-		parentID = &pid
+		return failResponse(ctx, http.StatusBadRequest, errKeyUploadInitiateFailed, err)
 	}
 
 	session, err := c.driveService.InitiateMultipartUpload(
@@ -176,7 +186,7 @@ func (c *UploadController) InitMultipart(ctx http.Context) http.Response {
 		req.ChunkSize,
 	)
 	if err != nil {
-		return failResponse(ctx, http.StatusBadRequest, "upload.initiate_failed", err)
+		return failResponse(ctx, http.StatusBadRequest, errKeyUploadInitiateFailed, err)
 	}
 
 	return ctx.Response().Success().Json(http.Json{
@@ -273,7 +283,7 @@ func (c *UploadController) CompleteMultipart(ctx http.Context) http.Response {
 	var req requests.CompleteMultipartUploadRequest
 	errors, err := ctx.Request().ValidateRequest(&req)
 	if err != nil {
-		return failResponse(ctx, http.StatusBadRequest, "upload.invalid_request", err)
+		return failResponse(ctx, http.StatusBadRequest, errKeyUploadInvalidRequest, err)
 	}
 	if errors != nil {
 		return ctx.Response().Json(http.StatusUnprocessableEntity, http.Json{
@@ -285,18 +295,10 @@ func (c *UploadController) CompleteMultipart(ctx http.Context) http.Response {
 
 	item, err := c.driveService.CompleteMultipartUpload(context.Background(), user.ID, req.SessionID)
 	if err != nil {
-		return failResponse(ctx, http.StatusBadRequest, "upload.complete_failed", err)
+		return failResponse(ctx, http.StatusBadRequest, errKeyUploadCompleteFailed, err)
 	}
 
-	item.CloudAccountUUID = c.accountUUIDFor(item)
-
-	activityService := services.NewActivityService()
-	activityService.LogSafe(user.ID, item.CloudAccountID, "uploaded", item.Name, &item.UUID, helpers.GetClientIP(ctx), helpers.GetUserAgent(ctx), map[string]any{"size": item.Size, "mime": item.MimeType})
-
-	return ctx.Response().Success().Json(http.Json{
-		"status": "ok",
-		"data":   item.ToResponse(),
-	})
+	return c.finalizeUpload(ctx, user.ID, item)
 }
 
 // AbortMultipart aborts an in-progress multipart upload on S3 and deletes the session.
@@ -327,16 +329,24 @@ func (c *UploadController) AbortMultipart(ctx http.Context) http.Response {
 
 	return ctx.Response().Success().Json(http.Json{
 		"status":  "ok",
-		"message": facades.Lang(ctx).Get("upload.aborted"),
+		"message": facades.Lang(ctx).Get("upload.session_aborted"),
 	})
 }
 
 // accountUUIDFor resolves the public account uuid for an item, best-effort.
+//
+// The session row holds only the internal numeric account id; we read the
+// account's uuid in a single cheap query so the response can carry the public
+// identifier without exposing the database pk.
 func (c *UploadController) accountUUIDFor(item *models.DriveItem) string {
-	var account models.CloudAccount
-	if err := facades.Orm().Query().Where("id", item.CloudAccountID).First(&account); err != nil {
+	if item == nil || item.CloudAccountID == 0 {
 		return ""
 	}
-	return account.UUID
-}
 
+	var account models.CloudAccount
+	if err := facades.Orm().Query().Where("id", item.CloudAccountID).Select("uuid").First(&account); err == nil {
+		return account.UUID
+	}
+
+	return ""
+}

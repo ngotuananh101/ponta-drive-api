@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"ponta_drive/app/models"
-	_ "ponta_drive/tests"
+	_ "ponta_drive/tests" // Initialize test environment and facades.
 )
 
 func TestDriveItemToResponseExposesUUIDsNotIDs(t *testing.T) {

@@ -16,6 +16,11 @@ import (
 	"ponta_drive/app/services"
 )
 
+const (
+	errKeyItemNotFound = "drive.item_not_found"
+	errKeyCreateFailed = "drive.create_failed"
+)
+
 type DriveItemController struct {
 	service *services.CloudDriveService
 }
@@ -43,6 +48,44 @@ func (c *DriveItemController) accountUUIDFor(ctx context.Context, item *models.D
 		return ""
 	}
 	return account.UUID
+}
+
+func (c *DriveItemController) resolveUserAndItemUUID(ctx http.Context) (models.User, string, http.Response) {
+	user, ok := ctx.Value("user").(models.User)
+	if !ok || user.ID == 0 {
+		return models.User{}, "", ctx.Response().Json(http.StatusUnauthorized, http.Json{
+			"status":  "error",
+			"message": facades.Lang(ctx).Get("common.unauthorized"),
+		})
+	}
+
+	itemUUID := ctx.Request().Route("uuid")
+	if itemUUID == "" {
+		return models.User{}, "", ctx.Response().Json(http.StatusBadRequest, http.Json{
+			"status":  "error",
+			"message": facades.Lang(ctx).Get("common.uuid_required"),
+		})
+	}
+
+	return user, itemUUID, nil
+}
+
+func (c *DriveItemController) resolveFolderTargets(ctx context.Context, userID uint, cloudAccountUUID, parentUUID string) (uint, *uint, error) {
+	cloudAccountID, err := c.service.ResolveCloudAccountID(ctx, userID, cloudAccountUUID)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	var parentID *uint
+	if parentUUID != "" {
+		pid, err := c.service.ResolveDriveItemID(ctx, userID, parentUUID)
+		if err != nil {
+			return 0, nil, err
+		}
+		parentID = &pid
+	}
+
+	return cloudAccountID, parentID, nil
 }
 
 // Index lists drive items (files & folders) in a directory.
@@ -81,7 +124,7 @@ func (c *DriveItemController) Index(ctx http.Context) http.Response {
 	if parentUUID := ctx.Request().Query("parent_uuid"); parentUUID != "" {
 		pid, err := c.service.ResolveDriveItemID(context.Background(), user.ID, parentUUID)
 		if err != nil {
-			return failResponse(ctx, http.StatusNotFound, "drive.item_not_found", err)
+			return failResponse(ctx, http.StatusNotFound, errKeyItemNotFound, err)
 		}
 		parentID = &pid
 	}
@@ -172,23 +215,14 @@ func (c *DriveItemController) StoreFolder(ctx http.Context) http.Response {
 		})
 	}
 
-	cloudAccountID, err := c.service.ResolveCloudAccountID(context.Background(), user.ID, req.CloudAccountUUID)
+	cloudAccountID, parentID, err := c.resolveFolderTargets(context.Background(), user.ID, req.CloudAccountUUID, req.ParentUUID)
 	if err != nil {
-		return failResponse(ctx, http.StatusBadRequest, "drive.create_failed", err)
-	}
-
-	var parentID *uint
-	if req.ParentUUID != "" {
-		pid, err := c.service.ResolveDriveItemID(context.Background(), user.ID, req.ParentUUID)
-		if err != nil {
-			return failResponse(ctx, http.StatusBadRequest, "drive.create_failed", err)
-		}
-		parentID = &pid
+		return failResponse(ctx, http.StatusBadRequest, errKeyCreateFailed, err)
 	}
 
 	folder, err := c.service.CreateFolder(context.Background(), user.ID, cloudAccountID, parentID, req.Name)
 	if err != nil {
-		return failResponse(ctx, http.StatusBadRequest, "drive.create_failed", err)
+		return failResponse(ctx, http.StatusBadRequest, errKeyCreateFailed, err)
 	}
 
 	fillAccountUUID(req.CloudAccountUUID, folder)
@@ -204,25 +238,14 @@ func (c *DriveItemController) StoreFolder(ctx http.Context) http.Response {
 
 // Show returns metadata of a single item by UUID.
 func (c *DriveItemController) Show(ctx http.Context) http.Response {
-	user, ok := ctx.Value("user").(models.User)
-	if !ok || user.ID == 0 {
-		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("common.unauthorized"),
-		})
-	}
-
-	itemUUID := ctx.Request().Route("uuid")
-	if itemUUID == "" {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("common.uuid_required"),
-		})
+	user, itemUUID, errResp := c.resolveUserAndItemUUID(ctx)
+	if errResp != nil {
+		return errResp
 	}
 
 	item, err := c.service.GetItemByUUID(context.Background(), user.ID, itemUUID)
 	if err != nil {
-		return failResponse(ctx, http.StatusNotFound, "drive.item_not_found", err)
+		return failResponse(ctx, http.StatusNotFound, errKeyItemNotFound, err)
 	}
 
 	item.CloudAccountUUID = c.accountUUIDFor(context.Background(), item)
@@ -238,25 +261,14 @@ func (c *DriveItemController) Show(ctx http.Context) http.Response {
 // The drive URL carries the current folder's uuid so a reload stays put; on
 // load the client resolves that uuid back into the full path with this call.
 func (c *DriveItemController) Breadcrumb(ctx http.Context) http.Response {
-	user, ok := ctx.Value("user").(models.User)
-	if !ok || user.ID == 0 {
-		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("common.unauthorized"),
-		})
-	}
-
-	itemUUID := ctx.Request().Route("uuid")
-	if itemUUID == "" {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("common.uuid_required"),
-		})
+	user, itemUUID, errResp := c.resolveUserAndItemUUID(ctx)
+	if errResp != nil {
+		return errResp
 	}
 
 	chain, err := c.service.GetBreadcrumb(context.Background(), user.ID, itemUUID)
 	if err != nil {
-		return failResponse(ctx, http.StatusNotFound, "drive.item_not_found", err)
+		return failResponse(ctx, http.StatusNotFound, errKeyItemNotFound, err)
 	}
 
 	// All items in the chain belong to the same account; resolve its uuid once
@@ -276,20 +288,9 @@ func (c *DriveItemController) Breadcrumb(ctx http.Context) http.Response {
 
 // Update updates an item's name or parent directory.
 func (c *DriveItemController) Update(ctx http.Context) http.Response {
-	user, ok := ctx.Value("user").(models.User)
-	if !ok || user.ID == 0 {
-		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("common.unauthorized"),
-		})
-	}
-
-	itemUUID := ctx.Request().Route("uuid")
-	if itemUUID == "" {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("common.uuid_required"),
-		})
+	user, itemUUID, errResp := c.resolveUserAndItemUUID(ctx)
+	if errResp != nil {
+		return errResp
 	}
 
 	var req requests.UpdateDriveItemRequest
@@ -362,20 +363,9 @@ func shouldLogRename(hasPrevious bool, newName, previousName string) bool {
 
 // Star toggles the star flag on an item.
 func (c *DriveItemController) Star(ctx http.Context) http.Response {
-	user, ok := ctx.Value("user").(models.User)
-	if !ok || user.ID == 0 {
-		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("common.unauthorized"),
-		})
-	}
-
-	itemUUID := ctx.Request().Route("uuid")
-	if itemUUID == "" {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("common.uuid_required"),
-		})
+	user, itemUUID, errResp := c.resolveUserAndItemUUID(ctx)
+	if errResp != nil {
+		return errResp
 	}
 
 	item, err := c.service.ToggleStar(context.Background(), user.ID, itemUUID)
@@ -393,20 +383,9 @@ func (c *DriveItemController) Star(ctx http.Context) http.Response {
 
 // Destroy deletes an item.
 func (c *DriveItemController) Destroy(ctx http.Context) http.Response {
-	user, ok := ctx.Value("user").(models.User)
-	if !ok || user.ID == 0 {
-		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("common.unauthorized"),
-		})
-	}
-
-	itemUUID := ctx.Request().Route("uuid")
-	if itemUUID == "" {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("common.uuid_required"),
-		})
+	user, itemUUID, errResp := c.resolveUserAndItemUUID(ctx)
+	if errResp != nil {
+		return errResp
 	}
 
 	permanent := ctx.Request().QueryBool("permanent", false)
@@ -442,20 +421,9 @@ func (c *DriveItemController) Destroy(ctx http.Context) http.Response {
 
 // Download handles item download either by redirecting to presigned URL, returning JSON, or proxying the stream.
 func (c *DriveItemController) Download(ctx http.Context) http.Response {
-	user, ok := ctx.Value("user").(models.User)
-	if !ok || user.ID == 0 {
-		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("common.unauthorized"),
-		})
-	}
-
-	itemUUID := ctx.Request().Route("uuid")
-	if itemUUID == "" {
-		return ctx.Response().Json(http.StatusBadRequest, http.Json{
-			"status":  "error",
-			"message": facades.Lang(ctx).Get("common.uuid_required"),
-		})
+	user, itemUUID, errResp := c.resolveUserAndItemUUID(ctx)
+	if errResp != nil {
+		return errResp
 	}
 
 	mode := ctx.Request().Query("mode", "redirect")
