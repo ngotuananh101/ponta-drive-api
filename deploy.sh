@@ -88,7 +88,14 @@ mkdir -p storage/logs
 chmod 777 storage/logs
 
 # 9. Triển khai với docker compose
-docker-compose up -d --build
+#
+# `--force-recreate` là bắt buộc, không phải tuỳ chọn: container bind-mount cả
+# repo (./:/app) nên `docker-compose up -d --build` thấy Dockerfile/compose
+# không đổi, đánh dấu các layer là CACHED và báo "Container ... Running" —
+# nó KHÔNG khởi động lại process. Process cũ vẫn giữ binary cũ đã nạp trong
+# RAM, nên `mv main.new main` trên host vô tác dụng: API tiếp tục phục vụ code
+# cũ dù source đã mới. Recreate buộc process nạp lại /app/main.
+docker-compose up -d --build --force-recreate
 
 log_success "========================================================"
 log_success "🎉 DEPLOY THÀNH CÔNG! Backend đã sẵn sàng phục vụ."
