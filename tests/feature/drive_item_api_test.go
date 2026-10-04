@@ -297,3 +297,81 @@ func (s *DriveItemAPITestSuite) TestListItemsCarryCloudAccountUUID() {
 	s.Equal(s.account.UUID, first["cloud_account_uuid"])
 	s.NotContains(first, "cloud_account_id")
 }
+
+func (s *DriveItemAPITestSuite) TestPermanentDeleteFolderRecursiveWithStorageDecrement() {
+	// Set initial used_storage
+	s.account.UsedStorage = 50000
+	_ = facades.Orm().Query().Save(&s.account)
+
+	// 1. Create a parent folder
+	parent := s.createFolder("ParentFolder", nil)
+
+	// 2. Create child folder
+	child := s.createFolder("ChildFolder", &parent.UUID)
+
+	// 3. Create file inside child folder directly in DB
+	file := models.DriveItem{
+		UUID:           uuid.New().String(),
+		UserID:         s.user.ID,
+		CloudAccountID: s.account.ID,
+		ParentID: func() *uint {
+			var it models.DriveItem
+			_ = facades.Orm().Query().Where("uuid", child.UUID).First(&it)
+			return &it.ID
+		}(),
+		Name:        "nested-doc.txt",
+		Type:        models.ItemTypeFile,
+		Size:        15000,
+		StoragePath: "users/1/items/mock-nested-doc.txt",
+		Status:      models.ItemStatusReady,
+	}
+	s.Require().NoError(facades.Orm().Query().Create(&file))
+
+	// 4. Issue DELETE /v1/drive/items/{parent_uuid}?permanent=true
+	delResp, err := s.Http(s.T()).WithToken(s.token).Delete(
+		fmt.Sprintf("/v1/drive/items/%s?permanent=true", parent.UUID),
+		nil,
+	)
+	s.Require().NoError(err)
+	delResp.AssertOk()
+
+	// 5. Assert parent, child and nested file are completely gone from DB
+	count, err := facades.Orm().Query().Model(&models.DriveItem{}).
+		Where("uuid IN (?)", []string{parent.UUID, child.UUID, file.UUID}).
+		Count()
+	s.Require().NoError(err)
+	s.Equal(int64(0), count, "all items in hierarchy must be permanently deleted")
+
+	// 6. Assert used_storage decremented: 50000 - 15000 = 35000
+	var refreshedAccount models.CloudAccount
+	_ = facades.Orm().Query().Where("id", s.account.ID).First(&refreshedAccount)
+	s.Equal(int64(35000), refreshedAccount.UsedStorage)
+}
+
+func (s *DriveItemAPITestSuite) TestStorageDecrementDoesNotGoBelowZero() {
+	s.account.UsedStorage = 2000
+	_ = facades.Orm().Query().Save(&s.account)
+
+	file := models.DriveItem{
+		UUID:           uuid.New().String(),
+		UserID:         s.user.ID,
+		CloudAccountID: s.account.ID,
+		Name:           "large.txt",
+		Type:           models.ItemTypeFile,
+		Size:           10000, // larger than used_storage
+		StoragePath:    "users/1/items/large.txt",
+		Status:         models.ItemStatusReady,
+	}
+	s.Require().NoError(facades.Orm().Query().Create(&file))
+
+	delResp, err := s.Http(s.T()).WithToken(s.token).Delete(
+		fmt.Sprintf("/v1/drive/items/%s?permanent=true", file.UUID),
+		nil,
+	)
+	s.Require().NoError(err)
+	delResp.AssertOk()
+
+	var refreshedAccount models.CloudAccount
+	_ = facades.Orm().Query().Where("id", s.account.ID).First(&refreshedAccount)
+	s.Equal(int64(0), refreshedAccount.UsedStorage, "storage decrement must be floored at 0")
+}
