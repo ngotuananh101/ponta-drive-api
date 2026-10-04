@@ -89,12 +89,20 @@ chmod 777 storage/logs
 
 # 9. Triển khai với docker compose
 #
-# `--force-recreate` là bắt buộc, không phải tuỳ chọn: container bind-mount cả
-# repo (./:/app) nên `docker-compose up -d --build` thấy Dockerfile/compose
-# không đổi, đánh dấu các layer là CACHED và báo "Container ... Running" —
-# nó KHÔNG khởi động lại process. Process cũ vẫn giữ binary cũ đã nạp trong
-# RAM, nên `mv main.new main` trên host vô tác dụng: API tiếp tục phục vụ code
-# cũ dù source đã mới. Recreate buộc process nạp lại /app/main.
+# Phải `down --rmi local` trước khi `up`, không thể chỉ `up -d --build`:
+#
+#   - Dockerfile KHÔNG có COPY/ADD, nên image không chứa binary. Binary chạy
+#     từ bind-mount ./:/app (xem docker-compose.yml). Vì image không đổi,
+#     `up -d --build` đánh dấu layer CACHED, không rebuild và báo
+#     "Container ... Running" — nó không tạo lại container.
+#   - Process cũ vẫn giữ binary cũ đã nạp trong RAM, nên `mv main.new main`
+#     trên host vô tác dụng: API tiếp tục phục vụ code cũ dù source đã mới.
+#
+# `down --rmi local` xoá container và image (chỉ image build tại chỗ; base
+# debian:stable-slim vẫn cache), rồi `up --build` dựng lại và tạo container
+# mới → process mới nạp lại /app/main. Đây đúng là thao tác phải làm tay
+# trước đây (xoá container + image) mới thấy code mới.
+docker-compose down --rmi local --remove-orphans
 docker-compose up -d --build --force-recreate
 
 log_success "========================================================"
