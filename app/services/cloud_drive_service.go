@@ -169,6 +169,58 @@ func (s *CloudDriveService) GetItemByUUID(ctx context.Context, userID uint, item
 	return &item, nil
 }
 
+// GetBreadcrumb returns the ancestor chain for a folder, ordered root first and
+// ending with the folder itself. A client renders it as the breadcrumb and uses
+// the first entry to know it is at the top.
+//
+// The walk is bounded by a visited set: a corrupted `parent_id` cycle would
+// otherwise loop forever, and a depth cap keeps a pathologically deep tree from
+// issuing an unbounded number of queries.
+func (s *CloudDriveService) GetBreadcrumb(ctx context.Context, userID uint, itemUUID string) ([]models.DriveItem, error) {
+	item, err := s.GetItemByUUID(ctx, userID, itemUUID)
+	if err != nil {
+		return nil, err
+	}
+
+	const maxDepth = 100
+	chain := []models.DriveItem{*item}
+	visited := map[uint]bool{item.ID: true}
+
+	current := item
+	for current.ParentID != nil && *current.ParentID > 0 {
+		if len(chain) >= maxDepth {
+			break
+		}
+
+		parentID := *current.ParentID
+		if visited[parentID] {
+			// A cycle: stop rather than loop. The chain stays usable.
+			break
+		}
+
+		var parent models.DriveItem
+		if err := facades.Orm().Query().
+			Where("id", parentID).
+			Where("user_id", userID).
+			First(&parent); err != nil || parent.ID == 0 {
+			// A dangling parent (deleted out from under us): stop at the last
+			// resolvable entry rather than fail the whole breadcrumb.
+			break
+		}
+
+		visited[parent.ID] = true
+		chain = append(chain, parent)
+		current = &parent
+	}
+
+	// The walk produced child -> ... -> root; the caller wants root first.
+	for i, j := 0, len(chain)-1; i < j; i, j = i+1, j-1 {
+		chain[i], chain[j] = chain[j], chain[i]
+	}
+
+	return chain, nil
+}
+
 // UpdateItem updates name or parent folder of an item.
 func (s *CloudDriveService) UpdateItem(ctx context.Context, userID uint, itemUUID string, newName string, newParentID *uint) (*models.DriveItem, error) {
 	item, err := s.GetItemByUUID(ctx, userID, itemUUID)

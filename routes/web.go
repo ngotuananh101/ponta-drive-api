@@ -68,6 +68,7 @@ func Web() {
 					items.Get("", driveItemController.Index)
 					items.Post("/folders", driveItemController.StoreFolder)
 					items.Get("/{uuid}", driveItemController.Show)
+					items.Get("/{uuid}/breadcrumb", driveItemController.Breadcrumb)
 					items.Get("/{uuid}/download", driveItemController.Download)
 					items.Patch("/{uuid}", driveItemController.Update)
 					items.Post("/{uuid}/star", driveItemController.Star)

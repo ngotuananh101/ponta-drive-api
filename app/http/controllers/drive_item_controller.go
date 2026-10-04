@@ -194,6 +194,43 @@ func (c *DriveItemController) Show(ctx http.Context) http.Response {
 	})
 }
 
+// Breadcrumb returns the ancestor chain for a folder (root first, folder last).
+//
+// The drive URL carries the current folder's uuid so a reload stays put; on
+// load the client resolves that uuid back into the full path with this call.
+func (c *DriveItemController) Breadcrumb(ctx http.Context) http.Response {
+	user, ok := ctx.Value("user").(models.User)
+	if !ok || user.ID == 0 {
+		return ctx.Response().Json(http.StatusUnauthorized, http.Json{
+			"status":  "error",
+			"message": facades.Lang(ctx).Get("common.unauthorized"),
+		})
+	}
+
+	itemUUID := ctx.Request().Route("uuid")
+	if itemUUID == "" {
+		return ctx.Response().Json(http.StatusBadRequest, http.Json{
+			"status":  "error",
+			"message": facades.Lang(ctx).Get("common.uuid_required"),
+		})
+	}
+
+	chain, err := c.service.GetBreadcrumb(context.Background(), user.ID, itemUUID)
+	if err != nil {
+		return failResponse(ctx, http.StatusNotFound, "drive.item_not_found", err)
+	}
+
+	data := make([]map[string]any, 0, len(chain))
+	for _, entry := range chain {
+		data = append(data, entry.ToResponse())
+	}
+
+	return ctx.Response().Success().Json(http.Json{
+		"status": "ok",
+		"data":   data,
+	})
+}
+
 // Update updates an item's name or parent directory.
 func (c *DriveItemController) Update(ctx http.Context) http.Response {
 	user, ok := ctx.Value("user").(models.User)

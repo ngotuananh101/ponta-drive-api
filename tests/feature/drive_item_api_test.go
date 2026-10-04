@@ -197,3 +197,87 @@ func (s *DriveItemAPITestSuite) TestCreateFolderErrorDoesNotLeakInternalDetail()
 	s.NotContains(message, "create_failed",
 		"the translation key must resolve: an unresolved key would be shown to the user verbatim")
 }
+
+// TestBreadcrumb pins the endpoint a hard reload relies on: opening a folder
+// only changes local state today, so a refresh loses the path. The URL now
+// carries the current folder's uuid and this endpoint rebuilds the ancestor
+// chain from it, root first, so the breadcrumb can be rendered after a reload.
+func (s *DriveItemAPITestSuite) TestBreadcrumb() {
+	// root -> Work -> Sub -> Deep
+	work := s.createFolder("Work", nil)
+	sub := s.createFolder("Sub", &work.ID)
+	deep := s.createFolder("Deep", &sub.ID)
+
+	resp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/drive/items/%s/breadcrumb", deep.UUID))
+	s.Require().NoError(err)
+	resp.AssertOk()
+
+	body, err := resp.Json()
+	s.Require().NoError(err)
+	chain := body["data"].([]any)
+	s.Len(chain, 3, "the chain must contain every ancestor, root first")
+
+	names := make([]string, 0, len(chain))
+	for _, entry := range chain {
+		names = append(names, entry.(map[string]any)["name"].(string))
+	}
+	s.Equal([]string{"Work", "Sub", "Deep"}, names)
+
+	// The first entry is the top of the chain: a client uses it to know it can
+	// stop walking up.
+	s.Nil(chain[0].(map[string]any)["parent_id"],
+		"the root-most entry must have no parent")
+
+	// A root-level folder yields a single-entry chain.
+	rootResp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/drive/items/%s/breadcrumb", work.UUID))
+	s.Require().NoError(err)
+	rootResp.AssertOk()
+	rootBody, _ := rootResp.Json()
+	s.Len(rootBody["data"].([]any), 1)
+}
+
+// TestBreadcrumbNotFoundDoesNotLeakInternalDetail checks the failure path: an
+// unknown uuid returns a localized 404, never the internal error text.
+func (s *DriveItemAPITestSuite) TestBreadcrumbNotFoundDoesNotLeakInternalDetail() {
+	resp, err := s.Http(s.T()).WithToken(s.token).Get("/v1/drive/items/00000000-0000-0000-0000-000000000000/breadcrumb")
+	s.Require().NoError(err)
+	resp.AssertStatus(http.StatusNotFound)
+
+	body, err := resp.Json()
+	s.Require().NoError(err)
+	message, _ := body["message"].(string)
+	s.NotEmpty(message)
+	s.NotContains(message, "item not found",
+		"the internal service error must not be echoed to the client")
+	s.NotContains(message, "item_not_found",
+		"the translation key must resolve before reaching the client")
+}
+
+// createFolder posts a folder via the API and returns the created item.
+func (s *DriveItemAPITestSuite) createFolder(name string, parentID *uint) models.DriveItem {
+	payload := map[string]any{
+		"cloud_account_id": s.account.ID,
+		"name":             name,
+	}
+	if parentID != nil {
+		payload["parent_id"] = *parentID
+	}
+	raw, _ := json.Marshal(payload)
+
+	resp, err := s.Http(s.T()).WithToken(s.token).Post("/v1/drive/items/folders", bytes.NewBuffer(raw))
+	s.Require().NoError(err)
+	resp.AssertStatus(http.StatusCreated)
+
+	body, err := resp.Json()
+	s.Require().NoError(err)
+	data := body["data"].(map[string]any)
+
+	// Assign the promoted `Model.ID` field rather than set it in the composite
+	// literal: a promoted field in a struct literal needs go1.27 and this
+	// module's lang is go1.25.
+	var item models.DriveItem
+	item.UUID = data["uuid"].(string)
+	item.Name = data["name"].(string)
+	item.ID = uint(data["id"].(float64))
+	return item
+}
