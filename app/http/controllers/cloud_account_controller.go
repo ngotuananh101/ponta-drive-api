@@ -30,6 +30,37 @@ func NewCloudAccountController() *CloudAccountController {
 	}
 }
 
+// dispatchSync marks the account as syncing, records the activity, and hands the
+// bucket scan to the queue. It is shared by Sync (the explicit endpoint) and
+// Store (the automatic first sync) so both behave identically.
+//
+// With the "sync" queue driver the job runs inline and returns only when the
+// scan finishes, so the account is already back to idle/error by the time this
+// returns. With "database" the job is stored and a worker picks it up, leaving
+// the account in "syncing" until the worker updates it.
+func (c *CloudAccountController) dispatchSync(ctx http.Context, userID uint, account *models.CloudAccount, parentID *uint) {
+	_, _ = facades.Orm().Query().Model(&models.CloudAccount{}).Where("id", account.ID).Update(map[string]any{"sync_status": "syncing"})
+
+	activityService := services.NewActivityService()
+	activityService.LogSafe(userID, account.ID, "sync_started", account.Name, nil, helpers.GetClientIP(ctx), helpers.GetUserAgent(ctx), nil)
+
+	job := &jobs.SyncS3BucketJob{}
+	err := facades.Queue().Job(job, []queue.Arg{
+		{Value: userID, Type: "uint"},
+		{Value: account.ID, Type: "uint"},
+		{Value: parentID, Type: "*uint"},
+	}).Dispatch()
+	if err != nil {
+		// Dispatch only fails when the queue backend rejected the job, so it
+		// never ran and the account would be stuck at "syncing". Release it to
+		// "error" and log the cause (never surfaced to the client). When the job
+		// did run and its scan failed, its own defer already set "error", so
+		// this is a harmless re-set.
+		facades.Log().Errorf("[cloud] sync dispatch failed account=%d: %v", account.ID, err)
+		_, _ = facades.Orm().Query().Model(&models.CloudAccount{}).Where("id", account.ID).Update(map[string]any{"sync_status": "error"})
+	}
+}
+
 // Index lists all cloud accounts belonging to the authenticated user.
 func (c *CloudAccountController) Index(ctx http.Context) http.Response {
 	user, ok := ctx.Value("user").(models.User)
@@ -159,6 +190,19 @@ func (c *CloudAccountController) Store(ctx http.Context) http.Response {
 
 	if err := facades.Orm().Query().Create(&account); err != nil {
 		return failResponse(ctx, http.StatusInternalServerError, "cloud.save_failed", err)
+	}
+
+	// Scan the bucket right away so a freshly connected account is not empty
+	// when the user opens it. With the sync driver this runs inline and the
+	// reload below reflects the finished state; with database it stays
+	// "syncing" until the worker completes.
+	c.dispatchSync(ctx, user.ID, &account, nil)
+
+	// Reload into a fresh value so the response carries the sync_status the
+	// dispatch produced rather than the zero value from before it ran.
+	var fresh models.CloudAccount
+	if err := facades.Orm().Query().Where("id", account.ID).First(&fresh); err == nil {
+		account = fresh
 	}
 
 	return ctx.Response().Json(http.StatusCreated, http.Json{
@@ -352,24 +396,7 @@ func (c *CloudAccountController) Sync(ctx http.Context) http.Response {
 		}
 	}
 
-	_, _ = facades.Orm().Query().Where("id", account.ID).Update(map[string]any{"sync_status": "syncing"})
-	activityService := services.NewActivityService()
-	activityService.LogSafe(user.ID, account.ID, "sync_started", account.Name, nil, helpers.GetClientIP(ctx), helpers.GetUserAgent(ctx), nil)
-
-	// Dispatch sync job via Queue facade
-	job := &jobs.SyncS3BucketJob{}
-	err = facades.Queue().Job(job, []queue.Arg{
-		{Value: user.ID, Type: "uint"},
-		{Value: account.ID, Type: "uint"},
-		{Value: parentID, Type: "*uint"},
-	}).Dispatch()
-	if err != nil {
-		// Fallback: run scan directly
-		driveService := services.NewCloudDriveService()
-		_, _ = driveService.ScanBucket(context.Background(), user.ID, account.ID, parentID)
-		// The job never ran, so release the account from the "syncing" state here.
-		_, _ = facades.Orm().Query().Where("id", account.ID).Update(map[string]any{"sync_status": "idle", "last_synced_at": time.Now()})
-	}
+	c.dispatchSync(ctx, user.ID, &account, parentID)
 
 	return ctx.Response().Success().Json(http.Json{
 		"status":  "ok",

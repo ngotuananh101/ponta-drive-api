@@ -194,3 +194,47 @@ func (s *BucketSyncTestSuite) TestBucketSyncWorkflow() {
 	s.Require().NoError(err)
 	s.Equal(int64(4), totalItems) // photos, vacation, beach.jpg, readme.txt
 }
+
+// TestCreateAccountAutoSyncs pins the "save a connection and it starts syncing"
+// behaviour. Previously a new account stayed empty until someone found the sync
+// endpoint, so the drive view showed nothing. Store now dispatches the same job
+// the Sync endpoint does; with the default "sync" queue driver that job runs
+// inline, so the created account's files are already present when the response
+// returns.
+func (s *BucketSyncTestSuite) TestCreateAccountAutoSyncs() {
+	createPayload, _ := json.Marshal(map[string]any{
+		"name":              "Auto Sync Storage",
+		"provider":          models.ProviderMinIO,
+		"endpoint":          s.mockServer.URL,
+		"bucket":            "mock-bucket",
+		"region":            "us-east-1",
+		"access_key_id":     "mock-key",
+		"secret_access_key": "mock-secret",
+		"use_path_style":    true,
+	})
+
+	resp, err := s.Http(s.T()).WithToken(s.token).Post("/v1/cloud-accounts", bytes.NewBuffer(createPayload))
+	s.Require().NoError(err)
+	resp.AssertStatus(http.StatusCreated)
+
+	body, err := resp.Json()
+	s.Require().NoError(err)
+	accountID := uint(body["data"].(map[string]any)["id"].(float64))
+	s.Greater(accountID, uint(0))
+
+	// The inline job must have populated the bucket's items.
+	var items []models.DriveItem
+	err = facades.Orm().Query().
+		Where("user_id", s.user.ID).
+		Where("cloud_account_id", accountID).
+		Find(&items)
+	s.Require().NoError(err)
+	s.Len(items, 4, "creating an account must trigger a sync so the drive view is not empty")
+
+	// And the account must not be left stuck at "syncing".
+	var account models.CloudAccount
+	err = facades.Orm().Query().Where("id", accountID).First(&account)
+	s.Require().NoError(err)
+	s.Equal("idle", account.SyncStatus)
+	s.NotNil(account.LastSyncedAt)
+}

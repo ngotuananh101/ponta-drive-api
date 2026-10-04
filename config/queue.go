@@ -7,8 +7,14 @@ import (
 func init() {
 	config := facades.Config()
 	config.Add("queue", map[string]any{
-		// Default Queue Connection Name
-		"default": "sync",
+		// Default Queue Connection Name.
+		//
+		// "sync" runs every dispatched job inline, inside the HTTP request that
+		// dispatched it. "database" stores the job in the `jobs` table and a
+		// worker running inside the server process picks it up, so the request
+		// returns immediately. Set QUEUE_CONNECTION=database when a job (a full
+		// bucket scan) can outlive the request timeout.
+		"default": config.Env("QUEUE_CONNECTION", "sync"),
 
 		// Queue Connections
 		//
@@ -21,8 +27,8 @@ func init() {
 			"database": map[string]any{
 				"driver":     "database",
 				"connection": config.Env("DB_CONNECTION"),
-				"queue":      "default",
-				"concurrent": 1,
+				"queue":      config.Env("QUEUE_NAME", "default"),
+				"concurrent": config.Env("QUEUE_CONCURRENT", 1),
 			},
 		},
 

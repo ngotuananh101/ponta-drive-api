@@ -74,7 +74,7 @@ func (j *SyncS3BucketJob) Handle(args ...any) error {
 		} else {
 			updates["last_synced_at"] = time.Now()
 		}
-		_, _ = facades.Orm().Query().Where("id", cloudAccountID).Update(updates)
+		_, _ = facades.Orm().Query().Model(&models.CloudAccount{}).Where("id", cloudAccountID).Update(updates)
 
 		if scanErr != nil {
 			return
