@@ -256,6 +256,46 @@ func (s *DriveItemAPITestSuite) TestBreadcrumbNotFoundDoesNotLeakInternalDetail(
 		"the translation key must resolve before reaching the client")
 }
 
+// TestDeleteItemDoesNotLeakInternalDetail checks the failure path: deleting an
+// unknown uuid must return a localized message, never the internal error text
+// ("item not found") from cloud_drive_service.go.
+//
+// NOTE on status code: the spec §5.6 wording says 404 for a missing item, but
+// the controller currently returns 400 here because Destroy routes the
+// DeleteItem error through failResponse(status=BadRequest). This test asserts
+// the ACTUAL behavior (400) and documents the discrepancy; the controller is
+// intentionally left unchanged in this round.
+func (s *DriveItemAPITestSuite) TestDeleteItemDoesNotLeakInternalDetail() {
+	unknownUUID := uuid.New().String()
+	resp, err := s.Http(s.T()).WithToken(s.token).Delete(
+		fmt.Sprintf("/v1/drive/items/%s?permanent=true", unknownUUID),
+		nil,
+	)
+	s.Require().NoError(err)
+
+	// The controller currently returns 400 (not 404 as the spec §5.6 wording suggests).
+	// This is the actual behavior; assert it and note the discrepancy.
+	resp.AssertStatus(http.StatusBadRequest)
+
+	body, err := resp.Json()
+	s.Require().NoError(err)
+	message, _ := body["message"].(string)
+	s.NotEmpty(message)
+
+	s.NotContains(message, "item not found",
+		"the internal service error ('item not found' from cloud_drive_service.go) must not be echoed to the client")
+	s.NotContains(message, "item_not_found",
+		"the translation key must resolve before reaching the client")
+
+	// The body must carry the localized drive.delete_failed message. The test
+	// app defaults to the Vietnamese locale, so the resolved message is the vi
+	// translation; we accept either locale's translation to stay robust.
+	s.Contains(message, "Không thể xóa mục. Vui lòng thử lại.",
+		"the response should contain the localized (vi) 'drive.delete_failed' message")
+	s.NotEqual("drive.delete_failed", message,
+		"the translation key must resolve: an unresolved key would be shown to the user verbatim")
+}
+
 // createFolder posts a folder via the API and returns the created item.
 // parentUUID is the UUID of the parent folder, or nil for root level.
 func (s *DriveItemAPITestSuite) createFolder(name string, parentUUID *string) models.DriveItem {

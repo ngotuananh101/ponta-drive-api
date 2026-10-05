@@ -330,6 +330,12 @@ func (s *CloudDriveService) DeleteItem(ctx context.Context, userID uint, itemUUI
 
 	// Permanent delete path
 	driver, account, driverErr := s.GetDriver(ctx, userID, item.CloudAccountID)
+	if driverErr != nil {
+		// Log internally only: the S3 delete is skipped, but the row deletion below
+		// still proceeds so the item is not orphaned in the DB. The error is never
+		// returned to the client.
+		facades.Log().Warningf("[Drive] Failed to initialize storage driver for item %s (user %d) during permanent delete: %v", itemUUID, userID, driverErr)
+	}
 
 	if item.IsFile() {
 		if driverErr == nil && driver != nil && item.StoragePath != "" {
