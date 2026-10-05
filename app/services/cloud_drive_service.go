@@ -314,28 +314,145 @@ func (s *CloudDriveService) ToggleStar(ctx context.Context, userID uint, itemUUI
 	return item, nil
 }
 
-// DeleteItem deletes an item (soft-delete or permanent delete).
+// DeleteItem deletes an item (soft-delete or permanent delete). For folders with
+// permanent=true, all descendant files and folders are recursively deleted and
+// used_storage is decremented.
 func (s *CloudDriveService) DeleteItem(ctx context.Context, userID uint, itemUUID string, permanent bool) error {
 	item, err := s.GetItemByUUID(ctx, userID, itemUUID)
 	if err != nil {
 		return err
 	}
 
-	// If permanent and it is a file on S3, delete object from bucket
-	if permanent && item.IsFile() && item.StoragePath != "" {
-		driver, _, err := s.GetDriver(ctx, userID, item.CloudAccountID)
-		if err == nil && driver != nil {
+	if !permanent {
+		_, err = facades.Orm().Query().Delete(item)
+		return err
+	}
+
+	// Permanent delete path
+	driver, account, driverErr := s.GetDriver(ctx, userID, item.CloudAccountID)
+	if driverErr != nil {
+		// Log internally only: the S3 delete is skipped, but the row deletion below
+		// still proceeds so the item is not orphaned in the DB. The error is never
+		// returned to the client.
+		facades.Log().Warningf("[Drive] Failed to initialize storage driver for item %s (user %d) during permanent delete: %v", itemUUID, userID, driverErr)
+	}
+
+	if item.IsFile() {
+		if driverErr == nil && driver != nil && item.StoragePath != "" {
 			_ = driver.Delete(ctx, item.StoragePath)
+		}
+		if _, err := facades.Orm().Query().ForceDelete(item); err != nil {
+			return err
+		}
+		if account != nil && item.Size > 0 {
+			newUsed := account.UsedStorage - item.Size
+			if newUsed < 0 {
+				newUsed = 0
+			}
+			account.UsedStorage = newUsed
+			_ = facades.Orm().Query().Save(account)
+		}
+		return nil
+	}
+
+	// Folder permanent delete: collect all descendants
+	allItems, keys, totalSize, collectErr := s.CollectDescendantItems(ctx, userID, item.CloudAccountID, item.ID)
+	if collectErr != nil {
+		return collectErr
+	}
+
+	// Batch delete from S3 driver
+	if driverErr == nil && driver != nil && len(keys) > 0 {
+		if batchErr := driver.DeleteObjects(ctx, keys); batchErr != nil {
+			facades.Log().Warningf("[Drive] Failed to batch delete %d objects for folder %s: %v", len(keys), itemUUID, batchErr)
 		}
 	}
 
-	if permanent {
-		_, err = facades.Orm().Query().ForceDelete(item)
-	} else {
-		_, err = facades.Orm().Query().Delete(item)
+	// Force delete rows in batch
+	ids := make([]uint, 0, len(allItems))
+	for _, it := range allItems {
+		ids = append(ids, it.ID)
 	}
 
-	return err
+	if len(ids) > 0 {
+		if _, err := facades.Orm().Query().Where("id IN (?)", ids).ForceDelete(&models.DriveItem{}); err != nil {
+			return err
+		}
+	}
+
+	// Decrement used_storage floored at 0
+	if account != nil && totalSize > 0 {
+		newUsed := account.UsedStorage - totalSize
+		if newUsed < 0 {
+			newUsed = 0
+		}
+		account.UsedStorage = newUsed
+		_ = facades.Orm().Query().Save(account)
+	}
+
+	return nil
+}
+
+// CollectDescendantItems walks the folder subtree via BFS starting from rootFolderID,
+// guarded by a visited set against cycles. It returns all collected DriveItems (including
+// root), all non-empty file storage keys, and the total size of files.
+func (s *CloudDriveService) CollectDescendantItems(ctx context.Context, userID uint, cloudAccountID uint, rootFolderID uint) ([]models.DriveItem, []string, int64, error) {
+	var root models.DriveItem
+	err := facades.Orm().Query().
+		Where("id", rootFolderID).
+		Where("user_id", userID).
+		Where("cloud_account_id", cloudAccountID).
+		First(&root)
+	if err != nil || root.ID == 0 {
+		return nil, nil, 0, errors.New("root item not found")
+	}
+
+	queue := []uint{root.ID}
+	visited := map[uint]bool{root.ID: true}
+	allItems := []models.DriveItem{root}
+	var keys []string
+	var totalSize int64
+
+	const maxItems = 10000
+
+	for len(queue) > 0 {
+		if len(allItems) >= maxItems {
+			break
+		}
+		currentID := queue[0]
+		queue = queue[1:]
+
+		var children []models.DriveItem
+		err := facades.Orm().Query().
+			Where("user_id", userID).
+			Where("cloud_account_id", cloudAccountID).
+			Where("parent_id", currentID).
+			Get(&children)
+		if err != nil {
+			return nil, nil, 0, err
+		}
+
+		for _, child := range children {
+			if visited[child.ID] {
+				continue
+			}
+			visited[child.ID] = true
+			allItems = append(allItems, child)
+
+			if child.IsFolder() {
+				queue = append(queue, child.ID)
+			} else if child.IsFile() {
+				if child.StoragePath != "" {
+					keys = append(keys, child.StoragePath)
+				}
+				if child.Size > 0 {
+					totalSize += child.Size
+				}
+			}
+		}
+	}
+
+	return allItems, keys, totalSize, nil
 }
 
 // InitiatePresignedUpload creates a pending DriveItem and generates an S3 Presigned Upload URL.

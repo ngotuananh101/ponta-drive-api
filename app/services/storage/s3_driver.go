@@ -310,6 +310,52 @@ func (d *S3Driver) AbortMultipart(ctx context.Context, key string, uploadID stri
 	return err
 }
 
+// DeleteObjects deletes multiple objects from S3 in batches of up to 1000 keys.
+func (d *S3Driver) DeleteObjects(ctx context.Context, keys []string) error {
+	if len(keys) == 0 {
+		return nil
+	}
+
+	const batchSize = 1000
+	for i := 0; i < len(keys); i += batchSize {
+		end := i + batchSize
+		if end > len(keys) {
+			end = len(keys)
+		}
+		chunk := keys[i:end]
+
+		objects := make([]types.ObjectIdentifier, 0, len(chunk))
+		for _, k := range chunk {
+			if strings.TrimSpace(k) == "" {
+				continue
+			}
+			objects = append(objects, types.ObjectIdentifier{
+				Key: aws.String(k),
+			})
+		}
+
+		if len(objects) == 0 {
+			continue
+		}
+
+		output, err := d.client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+			Bucket: aws.String(d.bucket),
+			Delete: &types.Delete{
+				Objects: objects,
+				Quiet:   aws.Bool(true),
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("failed to batch delete objects from S3: %w", err)
+		}
+		if len(output.Errors) > 0 {
+			return fmt.Errorf("failed to delete %d objects from S3", len(output.Errors))
+		}
+	}
+
+	return nil
+}
+
 // ListObjects lists objects under a given prefix, supporting continuation tokens and pagination.
 func (d *S3Driver) ListObjects(ctx context.Context, prefix string, continuationToken string, maxKeys int32) (*contracts.ListObjectsResult, error) {
 	input := &s3.ListObjectsV2Input{

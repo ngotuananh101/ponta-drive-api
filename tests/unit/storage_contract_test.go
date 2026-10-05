@@ -29,3 +29,4 @@ func (s *s3DriverStub) UploadPart(ctx context.Context, key string, uploadID stri
 func (s *s3DriverStub) CompleteMultipart(ctx context.Context, key string, uploadID string, parts []contracts.CompletedPart) error { return nil }
 func (s *s3DriverStub) AbortMultipart(ctx context.Context, key string, uploadID string) error { return nil }
 func (s *s3DriverStub) ListObjects(ctx context.Context, prefix string, continuationToken string, maxKeys int32) (*contracts.ListObjectsResult, error) { return nil, nil }
+func (s *s3DriverStub) DeleteObjects(ctx context.Context, keys []string) error { return nil }
