@@ -240,22 +240,26 @@ func TestS3DriverOperationsWithMockServer(t *testing.T) {
 	assert.Equal(t, int64(12), listRes.Objects[0].Size)
 }
 
-func TestS3DriverDeleteObjectsChunkingAndEmpty(t *testing.T) {
-	var deleteObjectsCalls int32
+// newDeleteObjectsTestDriver sets up a mock S3 HTTP server that counts
+// DeleteObjects calls and a configured S3Driver pointing at it.
+// Tests using this helper reset the counter between sub-cases via the
+// returned pointer.
+func newDeleteObjectsTestDriver(t *testing.T) (*storage.S3Driver, *int32) {
+	t.Helper()
+	var calls int32
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost && r.URL.Query().Has("delete") {
-			atomic.AddInt32(&deleteObjectsCalls, 1)
+			atomic.AddInt32(&calls, 1)
 			w.Header().Set("Content-Type", "application/xml")
-			xmlResp := `<?xml version="1.0" encoding="UTF-8"?>
+			_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
 <DeleteResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
     <Deleted><Key>file1.txt</Key></Deleted>
-</DeleteResult>`
-			_, _ = w.Write([]byte(xmlResp))
+</DeleteResult>`))
 			return
 		}
 		w.WriteHeader(http.StatusOK)
 	}))
-	defer mockServer.Close()
+	t.Cleanup(mockServer.Close)
 
 	cfg := storage.S3Config{
 		Bucket:          "test-bucket",
@@ -268,55 +272,37 @@ func TestS3DriverDeleteObjectsChunkingAndEmpty(t *testing.T) {
 
 	driver, err := storage.NewS3Driver(context.Background(), cfg)
 	require.NoError(t, err)
+	return driver, &calls
+}
 
+// TestS3DriverDeleteObjectsChunkingAndEmpty asserts the DeleteObjects
+// chunking behaviour across three sub-cases:
+//   - 0 keys -> 0 DeleteObjects calls
+//   - 2 keys -> 1 call
+//   - 1001 keys -> 2 calls
+func TestS3DriverDeleteObjectsChunkingAndEmpty(t *testing.T) {
+	driver, deleteObjectsCalls := newDeleteObjectsTestDriver(t)
 	ctx := context.Background()
 
 	// 1. Empty keys slice should be a no-op
-	deleteObjectsCalls = 0
-	err = driver.DeleteObjects(ctx, []string{})
+	*deleteObjectsCalls = 0
+	err := driver.DeleteObjects(ctx, []string{})
 	assert.NoError(t, err)
-	assert.Equal(t, int32(0), atomic.LoadInt32(&deleteObjectsCalls),
+	assert.Equal(t, int32(0), atomic.LoadInt32(deleteObjectsCalls),
 		"empty key set must not issue any DeleteObjects call")
 
 	// 2. Non-empty keys slice
-	deleteObjectsCalls = 0
+	*deleteObjectsCalls = 0
 	err = driver.DeleteObjects(ctx, []string{"file1.txt", "file2.txt"})
 	assert.NoError(t, err)
-	assert.Equal(t, int32(1), atomic.LoadInt32(&deleteObjectsCalls),
+	assert.Equal(t, int32(1), atomic.LoadInt32(deleteObjectsCalls),
 		"two keys (under the 1000 batch size) must produce exactly 1 DeleteObjects call")
 }
 
 // TestS3DriverDeleteObjectsChunking1001Keys asserts that 1001 keys produce
 // exactly 2 DeleteObjects calls, because the S3 driver chunks at 1000 keys.
 func TestS3DriverDeleteObjectsChunking1001Keys(t *testing.T) {
-	var deleteObjectsCalls int32
-	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost && r.URL.Query().Has("delete") {
-			atomic.AddInt32(&deleteObjectsCalls, 1)
-			w.Header().Set("Content-Type", "application/xml")
-			xmlResp := `<?xml version="1.0" encoding="UTF-8"?>
-<DeleteResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-    <Deleted><Key>file1.txt</Key></Deleted>
-</DeleteResult>`
-			_, _ = w.Write([]byte(xmlResp))
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer mockServer.Close()
-
-	cfg := storage.S3Config{
-		Bucket:          "test-bucket",
-		Region:          "us-east-1",
-		AccessKeyID:     "test-key",
-		SecretAccessKey: "test-secret",
-		Endpoint:        mockServer.URL,
-		UsePathStyle:    true,
-	}
-
-	driver, err := storage.NewS3Driver(context.Background(), cfg)
-	require.NoError(t, err)
-
+	driver, deleteObjectsCalls := newDeleteObjectsTestDriver(t)
 	ctx := context.Background()
 
 	// Build 1001 distinct keys.
@@ -325,12 +311,12 @@ func TestS3DriverDeleteObjectsChunking1001Keys(t *testing.T) {
 		keys[i] = fmt.Sprintf("file%d.txt", i)
 	}
 
-	deleteObjectsCalls = 0
-	err = driver.DeleteObjects(ctx, keys)
+	*deleteObjectsCalls = 0
+	err := driver.DeleteObjects(ctx, keys)
 	assert.NoError(t, err)
 
 	// Chunk size is 1000, so 1001 keys must yield exactly 2 DeleteObjects calls
 	// (1000 + 1).
-	assert.Equal(t, int32(2), atomic.LoadInt32(&deleteObjectsCalls),
+	assert.Equal(t, int32(2), atomic.LoadInt32(deleteObjectsCalls),
 		"1001 keys with batch size 1000 must produce exactly 2 DeleteObjects calls")
 }
