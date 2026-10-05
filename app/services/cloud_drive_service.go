@@ -279,12 +279,19 @@ func (s *CloudDriveService) UpdateItem(ctx context.Context, userID uint, itemUUI
 			err := facades.Orm().Query().
 				Where("id", *newParentID).
 				Where("user_id", userID).
+				Where("cloud_account_id", item.CloudAccountID).
 				First(&parent)
 			if err != nil || parent.ID == 0 {
 				return nil, errors.New("destination folder not found")
 			}
 			if !parent.IsFolder() {
 				return nil, errors.New("destination is not a folder")
+			}
+			// Prevent cycles: the destination must not be the item itself or one
+			// of its own descendants. Walk up from the destination; if we reach
+			// the item, the move would create a loop.
+			if s.isSelfOrDescendant(userID, item.CloudAccountID, *newParentID, item.ID) {
+				return nil, errors.New("cannot move a folder into itself or its own subfolder")
 			}
 			item.ParentID = newParentID
 		} else {
@@ -297,6 +304,38 @@ func (s *CloudDriveService) UpdateItem(ctx context.Context, userID uint, itemUUI
 	}
 
 	return item, nil
+}
+
+// isSelfOrDescendant reports whether startID equals targetID or has targetID as
+// an ancestor. It walks the parent chain upward, guarded by a visited set
+// against pre-existing cycles and a depth cap against runaway trees.
+func (s *CloudDriveService) isSelfOrDescendant(userID uint, cloudAccountID uint, startID uint, targetID uint) bool {
+	const maxDepth = 10000
+	visited := map[uint]bool{}
+	current := startID
+	for depth := 0; current != 0 && depth < maxDepth; depth++ {
+		if current == targetID {
+			return true
+		}
+		if visited[current] {
+			break
+		}
+		visited[current] = true
+
+		var node models.DriveItem
+		if err := facades.Orm().Query().
+			Where("id", current).
+			Where("user_id", userID).
+			Where("cloud_account_id", cloudAccountID).
+			First(&node); err != nil || node.ID == 0 {
+			break
+		}
+		if node.ParentID == nil {
+			break
+		}
+		current = *node.ParentID
+	}
+	return false
 }
 
 // ToggleStar toggles the starred status of an item.
