@@ -505,11 +505,128 @@ func (s *DriveItemAPITestSuite) TestMoveFolderIntoOwnDescendantIsRejected() {
 	body, _ := resp.Json()
 	message, _ := body["message"].(string)
 	s.NotEmpty(message)
-	s.NotContains(message, "cycle", "internal error text must not leak")
+	s.NotContains(message, "cannot move a folder", "raw service error must not leak")
+	s.NotContains(message, "own subfolder", "raw service error must not leak")
 	s.NotContains(message, "update_failed", "the translation key must resolve")
 
 	// The tree is unchanged: child still under parent.
 	s.Len(s.listFolder(parent), 1)
+}
+
+// TestMoveItemToRoot proves the Blocker fix: parent_uuid:"" moves an item to root.
+func (s *DriveItemAPITestSuite) TestMoveItemToRoot() {
+	// folder A (root); file at root
+	folderA := s.createFolder("", "Move Target A")
+
+	file := models.DriveItem{
+		UUID:           uuid.New().String(),
+		UserID:         s.user.ID,
+		CloudAccountID: s.account.ID,
+		Name:           "root-file.txt",
+		Type:           models.ItemTypeFile,
+		Status:         models.ItemStatusReady,
+	}
+	s.Require().NoError(facades.Orm().Query().Create(&file))
+
+	// 1. Move file into folder A.
+	payload, _ := json.Marshal(map[string]any{"parent_uuid": folderA})
+	resp, err := s.Http(s.T()).WithToken(s.token).
+		WithHeader("Content-Type", "application/json").
+		Patch(fmt.Sprintf("/v1/drive/items/%s", file.UUID), bytes.NewBuffer(payload))
+	s.Require().NoError(err)
+	resp.AssertOk()
+
+	// It now lists under folder A and not at the root.
+	children := s.listFolder(folderA)
+	s.Len(children, 1)
+	s.Equal("root-file.txt", children[0].(map[string]any)["name"])
+
+	rootItems := s.listFolder("")
+	for _, it := range rootItems {
+		s.NotEqual("root-file.txt", it.(map[string]any)["name"])
+	}
+
+	// 2. Move file back to root via parent_uuid:"" (the Blocker path).
+	rootPayload, _ := json.Marshal(map[string]any{"parent_uuid": ""})
+	rootResp, err := s.Http(s.T()).WithToken(s.token).
+		WithHeader("Content-Type", "application/json").
+		Patch(fmt.Sprintf("/v1/drive/items/%s", file.UUID), bytes.NewBuffer(rootPayload))
+	s.Require().NoError(err)
+	rootResp.AssertOk()
+
+	// It now lists at root and not under folder A.
+	rootChildren := s.listFolder("")
+	found := false
+	for _, it := range rootChildren {
+		if it.(map[string]any)["name"] == "root-file.txt" {
+			found = true
+		}
+	}
+	s.True(found, "file must be back at root after parent_uuid: \"\"")
+	s.Len(s.listFolder(folderA), 0)
+}
+
+// TestMoveFolderIntoFolder proves folder-to-folder moves at the API level.
+func (s *DriveItemAPITestSuite) TestMoveFolderIntoFolder() {
+	// folder A and folder B at root
+	folderA := s.createFolder("", "Target Folder")
+	folderB := s.createFolder("", "Movable Folder")
+
+	// Move B into A.
+	payload, _ := json.Marshal(map[string]any{"parent_uuid": folderA})
+	resp, err := s.Http(s.T()).WithToken(s.token).
+		WithHeader("Content-Type", "application/json").
+		Patch(fmt.Sprintf("/v1/drive/items/%s", folderB), bytes.NewBuffer(payload))
+	s.Require().NoError(err)
+	resp.AssertOk()
+
+	// B lists under A and not at root.
+	children := s.listFolder(folderA)
+	s.Len(children, 1)
+	s.Equal("Movable Folder", children[0].(map[string]any)["name"])
+
+	rootItems := s.listFolder("")
+	for _, it := range rootItems {
+		s.NotEqual("Movable Folder", it.(map[string]any)["name"])
+	}
+}
+
+// TestMoveIntoNonFolderDestinationIsRejected proves a file cannot host other items.
+func (s *DriveItemAPITestSuite) TestMoveIntoNonFolderDestinationIsRejected() {
+	// Create two files at root.
+	fileA := models.DriveItem{
+		UUID:           uuid.New().String(),
+		UserID:         s.user.ID,
+		CloudAccountID: s.account.ID,
+		Name:           "host.txt",
+		Type:           models.ItemTypeFile,
+		Status:         models.ItemStatusReady,
+	}
+	s.Require().NoError(facades.Orm().Query().Create(&fileA))
+
+	fileB := models.DriveItem{
+		UUID:           uuid.New().String(),
+		UserID:         s.user.ID,
+		CloudAccountID: s.account.ID,
+		Name:           "guest.txt",
+		Type:           models.ItemTypeFile,
+		Status:         models.ItemStatusReady,
+	}
+	s.Require().NoError(facades.Orm().Query().Create(&fileB))
+
+	// Attempt to move fileB into fileA (a non-folder destination).
+	payload, _ := json.Marshal(map[string]any{"parent_uuid": fileA.UUID})
+	resp, err := s.Http(s.T()).WithToken(s.token).
+		WithHeader("Content-Type", "application/json").
+		Patch(fmt.Sprintf("/v1/drive/items/%s", fileB.UUID), bytes.NewBuffer(payload))
+	s.Require().NoError(err)
+	resp.AssertStatus(http.StatusBadRequest)
+
+	body, _ := resp.Json()
+	message, _ := body["message"].(string)
+	s.NotEmpty(message)
+	s.NotContains(message, "destination is not a folder", "raw service error must not leak")
+	s.NotContains(message, "update_failed", "the translation key must resolve")
 }
 
 // TestMoveFolderIntoItselfIsRejected proves the self-parent guard still holds.
@@ -522,6 +639,12 @@ func (s *DriveItemAPITestSuite) TestMoveFolderIntoItselfIsRejected() {
 		Patch(fmt.Sprintf("/v1/drive/items/%s", folder), bytes.NewBuffer(payload))
 	s.Require().NoError(err)
 	resp.AssertStatus(http.StatusBadRequest)
+
+	body, _ := resp.Json()
+	message, _ := body["message"].(string)
+	s.NotEmpty(message)
+	s.NotContains(message, "own parent", "raw service error must not leak")
+	s.NotContains(message, "update_failed", "the translation key must resolve")
 }
 
 // TestMoveIntoDifferentAccountFolderIsRejected proves the same-account guard.
@@ -566,4 +689,16 @@ func (s *DriveItemAPITestSuite) TestMoveIntoDifferentAccountFolderIsRejected() {
 		Patch(fmt.Sprintf("/v1/drive/items/%s", item.UUID), bytes.NewBuffer(payload))
 	s.Require().NoError(err)
 	resp.AssertStatus(http.StatusBadRequest)
+
+	body, _ := resp.Json()
+	message, _ := body["message"].(string)
+	s.NotEmpty(message)
+	s.NotContains(message, "destination folder not found", "raw service error must not leak")
+	s.NotContains(message, "update_failed", "the translation key must resolve")
+
+	// The item must stay put: still at root of the default account, parent_id nil.
+	var refreshed models.DriveItem
+	s.Require().NoError(facades.Orm().Query().Where("uuid", item.UUID).First(&refreshed))
+	s.Nil(refreshed.ParentID, "item must remain at root after a rejected cross-account move")
+	s.Equal(s.account.ID, refreshed.CloudAccountID, "item must stay in its original account")
 }

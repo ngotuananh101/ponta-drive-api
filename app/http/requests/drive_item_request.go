@@ -41,8 +41,8 @@ func (r *CreateFolderRequest) PrepareForValidation(ctx http.Context, data valida
 
 // UpdateDriveItemRequest validates renaming or moving an item.
 type UpdateDriveItemRequest struct {
-	Name       string `form:"name" json:"name"`
-	ParentUUID string `form:"parent_uuid" json:"parent_uuid"`
+	Name       string  `form:"name" json:"name"`
+	ParentUUID *string `form:"parent_uuid" json:"parent_uuid"`
 }
 
 func (r *UpdateDriveItemRequest) Authorize(ctx http.Context) error {
