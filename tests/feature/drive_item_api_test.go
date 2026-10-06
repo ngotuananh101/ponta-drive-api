@@ -617,3 +617,61 @@ func (s *DriveItemAPITestSuite) TestMoveIntoDifferentAccountFolderIsRejected() {
 	s.Nil(refreshed.ParentID, "item must remain at root after a rejected cross-account move")
 	s.Equal(s.account.ID, refreshed.CloudAccountID, "item must stay in its original account")
 }
+
+// searchNames queries the list endpoint with a search term and no parent, and
+// returns the names found.
+func (s *DriveItemAPITestSuite) searchNames(term string) []string {
+	url := fmt.Sprintf("/v1/drive/items?cloud_account_uuid=%s&search=%s", s.account.UUID, term)
+	resp, err := s.Http(s.T()).WithToken(s.token).Get(url)
+	s.Require().NoError(err)
+	resp.AssertOk()
+
+	body, _ := resp.Json()
+	raw := body["data"].([]any)
+	names := make([]string, 0, len(raw))
+	for _, entry := range raw {
+		names = append(names, entry.(map[string]any)["name"].(string))
+	}
+	return names
+}
+
+// TestSearchSpansWholeAccount: a search must find items in subfolders, not just
+// the folder in view. The term drops the parent scope but stays inside the
+// account.
+func (s *DriveItemAPITestSuite) TestSearchSpansWholeAccount() {
+	parent := models.DriveItem{
+		UUID:           uuid.New().String(),
+		UserID:         s.user.ID,
+		CloudAccountID: s.account.ID,
+		Name:           "Search Docs",
+		Type:           models.ItemTypeFolder,
+		Status:         models.ItemStatusReady,
+	}
+	s.Require().NoError(facades.Orm().Query().Create(&parent))
+
+	nested := models.DriveItem{
+		UUID:           uuid.New().String(),
+		UserID:         s.user.ID,
+		CloudAccountID: s.account.ID,
+		ParentID:       &parent.ID,
+		Name:           "findme.txt",
+		Type:           models.ItemTypeFile,
+		Status:         models.ItemStatusReady,
+	}
+	s.Require().NoError(facades.Orm().Query().Create(&nested))
+	s.createFileItem("other.txt")
+
+	names := s.searchNames("findme")
+
+	s.Contains(names, "findme.txt", "a file inside a subfolder must be found from the root")
+	s.NotContains(names, "other.txt")
+}
+
+// TestSearchMatchesSubstringAndRejectsNonMatch: matching is a substring of the
+// name, and a non-matching term returns nothing rather than the whole folder.
+func (s *DriveItemAPITestSuite) TestSearchMatchesSubstringAndRejectsNonMatch() {
+	s.createFileItem("quarterly-report.pdf")
+
+	s.Contains(s.searchNames("report"), "quarterly-report.pdf")
+	s.Empty(s.searchNames("zzz-no-such-name"), "a non-matching search must return nothing")
+}
