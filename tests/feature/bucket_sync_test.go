@@ -120,8 +120,8 @@ func (s *BucketSyncTestSuite) TearDownTest() {
 }
 
 func (s *BucketSyncTestSuite) TestBucketSyncWorkflow() {
-	// 1. Trigger sync via POST /v1/cloud-accounts/{uuid}/sync
-	syncResp, err := s.Http(s.T()).WithToken(s.token).Post(fmt.Sprintf("/v1/cloud-accounts/%s/sync", s.account.UUID), nil)
+	// 1. Trigger sync via POST /v1/cloud-accounts/{id}/sync
+	syncResp, err := s.Http(s.T()).WithToken(s.token).Post(fmt.Sprintf("/v1/cloud-accounts/%d/sync", s.account.ID), nil)
 	s.Require().NoError(err)
 	syncResp.AssertOk()
 
@@ -183,7 +183,7 @@ func (s *BucketSyncTestSuite) TestBucketSyncWorkflow() {
 	s.Equal("jpg", vacationChildren[0].Extension)
 
 	// 5. Test idempotency: re-running sync should not create duplicate items
-	syncResp2, err := s.Http(s.T()).WithToken(s.token).Post(fmt.Sprintf("/v1/cloud-accounts/%s/sync", s.account.UUID), nil)
+	syncResp2, err := s.Http(s.T()).WithToken(s.token).Post(fmt.Sprintf("/v1/cloud-accounts/%d/sync", s.account.ID), nil)
 	s.Require().NoError(err)
 	syncResp2.AssertOk()
 
@@ -272,7 +272,7 @@ func (s *BucketSyncTestSuite) TestSyncDoesNotMaterializeInternalUploadPrefix() {
 	}
 	s.Require().NoError(facades.Orm().Query().Create(&file))
 
-	resp, err := s.Http(s.T()).WithToken(s.token).Post(fmt.Sprintf("/v1/cloud-accounts/%s/sync", account.UUID), nil)
+	resp, err := s.Http(s.T()).WithToken(s.token).Post(fmt.Sprintf("/v1/cloud-accounts/%d/sync", account.ID), nil)
 	s.Require().NoError(err)
 	resp.AssertOk()
 
@@ -326,12 +326,12 @@ func (s *BucketSyncTestSuite) TestCreateAccountAutoSyncs() {
 	body, err := resp.Json()
 	s.Require().NoError(err)
 	accountData := body["data"].(map[string]any)
-	accountUUID := accountData["uuid"].(string)
-	s.NotEmpty(accountUUID)
+	accountID := uint(accountData["id"].(float64))
+	s.NotZero(accountID)
 
-	// Fetch the account to get its numeric ID for database queries
+	// Fetch the account by its public numeric id.
 	var account models.CloudAccount
-	err = facades.Orm().Query().Where("uuid", accountUUID).First(&account)
+	err = facades.Orm().Query().Where("id", accountID).First(&account)
 	s.Require().NoError(err)
 
 	// The inline job must have populated the bucket's items.

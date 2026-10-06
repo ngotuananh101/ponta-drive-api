@@ -34,7 +34,7 @@ func TestActivityLogToResponse(t *testing.T) {
 	assert.Equal(t, "upload", resp["action"])
 	assert.Equal(t, "holiday-photo.jpg", resp["target_name"])
 	assert.Equal(t, &targetUUID, resp["target_uuid"])
-	assert.Equal(t, &cloudAccountID, resp["cloud_id"])
+	assert.Equal(t, &cloudAccountID, resp["cloud_account_id"])
 	assert.Equal(t, "203.0.113.10", resp["ip_address"])
 	assert.Equal(t, "Mozilla/5.0 (Test)", resp["user_agent"])
 	assert.Equal(t, map[string]any{"size": float64(1024)}, resp["metadata"])

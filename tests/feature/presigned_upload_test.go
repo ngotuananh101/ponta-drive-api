@@ -106,10 +106,10 @@ func (s *PresignedUploadTestSuite) TearDownTest() {
 func (s *PresignedUploadTestSuite) TestPresignedUploadFlow() {
 	// 1. Initiate Presigned Upload (POST /v1/drive/upload/presigned)
 	initPayload, _ := json.Marshal(map[string]any{
-		"cloud_account_uuid": s.account.UUID,
-		"file_name":          "tutorial.mp4",
-		"size":               1048576,
-		"mime_type":          "video/mp4",
+		"cloud_account_id": s.account.ID,
+		"file_name":        "tutorial.mp4",
+		"size":             1048576,
+		"mime_type":        "video/mp4",
 	})
 
 	initResp, err := s.Http(s.T()).WithToken(s.token).Post("/v1/drive/upload/presigned", bytes.NewBuffer(initPayload))
@@ -126,7 +126,7 @@ func (s *PresignedUploadTestSuite) TestPresignedUploadFlow() {
 	s.Require().True(ok)
 	s.NotEmpty(uploadURL)
 	s.Equal("PUT", data["method"])
-	s.Equal(s.account.UUID, data["item"].(map[string]any)["cloud_account_uuid"])
+	s.Equal(float64(s.account.ID), data["item"].(map[string]any)["cloud_account_id"])
 
 	// Verify item exists with status 'uploading'
 	var item models.DriveItem
@@ -163,10 +163,10 @@ func (s *PresignedUploadTestSuite) TestPresignedUploadFlow() {
 // service error; the response must carry only the localized message.
 func (s *PresignedUploadTestSuite) TestInitiatePresignedErrorDoesNotLeakInternalDetail() {
 	payload, _ := json.Marshal(map[string]any{
-		"cloud_account_uuid": "00000000-0000-0000-0000-000000000000",
-		"file_name":          "leak.mp4",
-		"size":               1048576,
-		"mime_type":          "video/mp4",
+		"cloud_account_id": 999999999,
+		"file_name":        "leak.mp4",
+		"size":             1048576,
+		"mime_type":        "video/mp4",
 	})
 
 	resp, err := s.Http(s.T()).WithToken(s.token).Post("/v1/drive/upload/presigned", bytes.NewBuffer(payload))
@@ -192,10 +192,10 @@ func (s *PresignedUploadTestSuite) TestInitiatePresignedErrorDoesNotLeakInternal
 // client would be shown the raw key string instead of a message.
 func (s *PresignedUploadTestSuite) TestInitiatePresignedErrorResolvesEnglishMessage() {
 	payload, _ := json.Marshal(map[string]any{
-		"cloud_account_uuid": "00000000-0000-0000-0000-000000000000",
-		"file_name":          "locale.mp4",
-		"size":               1048576,
-		"mime_type":          "video/mp4",
+		"cloud_account_id": 999999999,
+		"file_name":        "locale.mp4",
+		"size":             1048576,
+		"mime_type":        "video/mp4",
 	})
 
 	resp, err := s.Http(s.T()).WithToken(s.token).

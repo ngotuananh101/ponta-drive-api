@@ -92,9 +92,9 @@ func (s *CloudAccountAPITestSuite) TestCloudAccountLifecycle() {
 	s.Require().NoError(err)
 	s.Equal("ok", createdBody["status"])
 	accountData := createdBody["data"].(map[string]any)
-	accountUUID := accountData["uuid"].(string)
-	s.NotEmpty(accountUUID)
-	s.NotContains(accountData, "id", "no numeric id may be exposed")
+	accountID := uint(accountData["id"].(float64))
+	s.NotZero(accountID)
+	s.NotContains(accountData, "uuid", "the numeric id is the public identifier; uuid is internal only")
 	s.Equal("Primary AWS", accountData["name"])
 	s.Equal(models.ProviderS3, accountData["provider"])
 	s.True(accountData["is_default"].(bool))
@@ -114,8 +114,8 @@ func (s *CloudAccountAPITestSuite) TestCloudAccountLifecycle() {
 	accountsList := listBody["data"].([]any)
 	s.Len(accountsList, 1)
 
-	// 3. Show Cloud Account (GET /v1/cloud-accounts/{uuid})
-	showResp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/cloud-accounts/%s", accountUUID))
+	// 3. Show Cloud Account (GET /v1/cloud-accounts/{id})
+	showResp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/cloud-accounts/%d", accountID))
 	s.Require().NoError(err)
 	showResp.AssertOk()
 
@@ -124,11 +124,11 @@ func (s *CloudAccountAPITestSuite) TestCloudAccountLifecycle() {
 	showData := showBody["data"].(map[string]any)
 	s.Equal("Primary AWS", showData["name"])
 
-	// 4. Update Cloud Account (PUT /v1/cloud-accounts/{uuid})
+	// 4. Update Cloud Account (PUT /v1/cloud-accounts/{id})
 	updatePayload, _ := json.Marshal(map[string]any{
 		"name": "Updated Primary AWS",
 	})
-	updateResp, err := s.Http(s.T()).WithToken(s.token).Put(fmt.Sprintf("/v1/cloud-accounts/%s", accountUUID), bytes.NewBuffer(updatePayload))
+	updateResp, err := s.Http(s.T()).WithToken(s.token).Put(fmt.Sprintf("/v1/cloud-accounts/%d", accountID), bytes.NewBuffer(updatePayload))
 	s.Require().NoError(err)
 	updateResp.AssertOk()
 
@@ -137,8 +137,8 @@ func (s *CloudAccountAPITestSuite) TestCloudAccountLifecycle() {
 	updatedData := updateBody["data"].(map[string]any)
 	s.Equal("Updated Primary AWS", updatedData["name"])
 
-	// 5. Delete Cloud Account (DELETE /v1/cloud-accounts/{uuid})
-	deleteResp, err := s.Http(s.T()).WithToken(s.token).Delete(fmt.Sprintf("/v1/cloud-accounts/%s", accountUUID), nil)
+	// 5. Delete Cloud Account (DELETE /v1/cloud-accounts/{id})
+	deleteResp, err := s.Http(s.T()).WithToken(s.token).Delete(fmt.Sprintf("/v1/cloud-accounts/%d", accountID), nil)
 	s.Require().NoError(err)
 	deleteResp.AssertOk()
 
@@ -231,8 +231,8 @@ func (s *CloudAccountAPITestSuite) TestCloudAccountTestConnectionFailureSanitize
 	s.NotContains(body["message"].(string), mockServer.URL)
 }
 
-func (s *CloudAccountAPITestSuite) TestShowUnknownUUIDDoesNotLeak() {
-	resp, err := s.Http(s.T()).WithToken(s.token).Get("/v1/cloud-accounts/00000000-0000-0000-0000-000000000000")
+func (s *CloudAccountAPITestSuite) TestShowUnknownIDDoesNotLeak() {
+	resp, err := s.Http(s.T()).WithToken(s.token).Get("/v1/cloud-accounts/999999999")
 	s.Require().NoError(err)
 	resp.AssertStatus(http.StatusNotFound)
 
@@ -242,4 +242,10 @@ func (s *CloudAccountAPITestSuite) TestShowUnknownUUIDDoesNotLeak() {
 	s.NotEmpty(message)
 	s.NotContains(message, "not found", "internal text must not be echoed")
 	s.NotContains(message, "cloud.not_found", "the translation key must resolve")
+}
+
+func (s *CloudAccountAPITestSuite) TestShowNonNumericIDIsRejected() {
+	resp, err := s.Http(s.T()).WithToken(s.token).Get("/v1/cloud-accounts/not-a-number")
+	s.Require().NoError(err)
+	resp.AssertStatus(http.StatusBadRequest)
 }

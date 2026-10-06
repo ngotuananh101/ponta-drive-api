@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/goravel/framework/contracts/http"
@@ -60,20 +61,21 @@ func (c *CloudAccountController) dispatchSync(ctx http.Context, userID uint, acc
 	}
 }
 
-// findAccountByUUID resolves the route's uuid to an account owned by the user.
-// On failure it returns the error response the caller must return: the Gin
-// adapter only renders the response a handler returns, so building a response
-// and returning nil would send an empty 200. The underlying error is never
-// surfaced (see failResponse).
-func (c *CloudAccountController) findAccountByUUID(ctx http.Context, userID uint) (*models.CloudAccount, http.Response) {
-	accountUUID := ctx.Request().Route("uuid")
-	if accountUUID == "" {
+// findAccountByID resolves the route's numeric account id to an account owned
+// by the user. On failure it returns the error response the caller must return:
+// the Gin adapter only renders the response a handler returns, so building a
+// response and returning nil would send an empty 200. The underlying error is
+// never surfaced (see failResponse).
+func (c *CloudAccountController) findAccountByID(ctx http.Context, userID uint) (*models.CloudAccount, http.Response) {
+	rawID := ctx.Request().Route("id")
+	accountID, err := strconv.ParseUint(rawID, 10, 64)
+	if rawID == "" || err != nil || accountID == 0 {
 		return nil, failResponse(ctx, http.StatusBadRequest, "common.invalid_account_id", nil)
 	}
 
 	var account models.CloudAccount
-	err := facades.Orm().Query().
-		Where("uuid", accountUUID).
+	err = facades.Orm().Query().
+		Where("id", uint(accountID)).
 		Where("user_id", userID).
 		First(&account)
 	if err != nil || account.ID == 0 {
@@ -240,7 +242,7 @@ func (c *CloudAccountController) Show(ctx http.Context) http.Response {
 		return failResponse(ctx, http.StatusUnauthorized, "common.unauthorized", nil)
 	}
 
-	account, errResp := c.findAccountByUUID(ctx, user.ID)
+	account, errResp := c.findAccountByID(ctx, user.ID)
 	if errResp != nil {
 		return errResp
 	}
@@ -258,7 +260,7 @@ func (c *CloudAccountController) Update(ctx http.Context) http.Response {
 		return failResponse(ctx, http.StatusUnauthorized, "common.unauthorized", nil)
 	}
 
-	account, errResp := c.findAccountByUUID(ctx, user.ID)
+	account, errResp := c.findAccountByID(ctx, user.ID)
 	if errResp != nil {
 		return errResp
 	}
@@ -345,7 +347,7 @@ func (c *CloudAccountController) Destroy(ctx http.Context) http.Response {
 		return failResponse(ctx, http.StatusUnauthorized, "common.unauthorized", nil)
 	}
 
-	account, errResp := c.findAccountByUUID(ctx, user.ID)
+	account, errResp := c.findAccountByID(ctx, user.ID)
 	if errResp != nil {
 		return errResp
 	}
@@ -369,7 +371,7 @@ func (c *CloudAccountController) Sync(ctx http.Context) http.Response {
 		return failResponse(ctx, http.StatusUnauthorized, "common.unauthorized", nil)
 	}
 
-	account, errResp := c.findAccountByUUID(ctx, user.ID)
+	account, errResp := c.findAccountByID(ctx, user.ID)
 	if errResp != nil {
 		return errResp
 	}

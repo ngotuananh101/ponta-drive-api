@@ -11,11 +11,16 @@ import (
 )
 
 const (
+	// uuidRoute identifies resources whose public identifier is a uuid (drive
+	// items).
 	uuidRoute           = "/{uuid}"
-	uuidSyncRoute       = "/{uuid}/sync"
 	uuidBreadcrumbRoute = "/{uuid}/breadcrumb"
 	uuidDownloadRoute   = "/{uuid}/download"
 	uuidStarRoute       = "/{uuid}/star"
+	// idRoute identifies cloud accounts, whose public identifier is the numeric
+	// account id.
+	idRoute     = "/{id}"
+	idSyncRoute = "/{id}/sync"
 )
 
 func Web() {
@@ -65,10 +70,10 @@ func Web() {
 				ca.Get("", cloudAccountController.Index)
 				ca.Post("", cloudAccountController.Store)
 				ca.Post("/test", cloudAccountController.Test)
-				ca.Get(uuidRoute, cloudAccountController.Show)
-				ca.Put(uuidRoute, cloudAccountController.Update)
-				ca.Delete(uuidRoute, cloudAccountController.Destroy)
-				ca.Post(uuidSyncRoute, cloudAccountController.Sync)
+				ca.Get(idRoute, cloudAccountController.Show)
+				ca.Put(idRoute, cloudAccountController.Update)
+				ca.Delete(idRoute, cloudAccountController.Destroy)
+				ca.Post(idSyncRoute, cloudAccountController.Sync)
 			})
 
 			v1.Prefix("drive").Group(func(drive route.Router) {

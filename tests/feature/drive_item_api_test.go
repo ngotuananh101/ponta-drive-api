@@ -86,8 +86,8 @@ func (s *DriveItemAPITestSuite) TearDownTest() {
 func (s *DriveItemAPITestSuite) TestDriveItemLifecycle() {
 	// 1. Create a Folder (POST /v1/drive/items/folders)
 	createFolderPayload, _ := json.Marshal(map[string]any{
-		"cloud_account_uuid": s.account.UUID,
-		"name":               "Work Documents",
+		"cloud_account_id": s.account.ID,
+		"name":             "Work Documents",
 	})
 	createResp, err := s.Http(s.T()).WithToken(s.token).Post("/v1/drive/items/folders", bytes.NewBuffer(createFolderPayload))
 	s.Require().NoError(err)
@@ -102,8 +102,8 @@ func (s *DriveItemAPITestSuite) TestDriveItemLifecycle() {
 	s.Equal("Work Documents", folderData["name"])
 	s.Equal(models.ItemTypeFolder, folderData["type"])
 
-	// 2. List Root Items (GET /v1/drive/items?cloud_account_uuid=...)
-	listResp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/drive/items?cloud_account_uuid=%s", s.account.UUID))
+	// 2. List Root Items (GET /v1/drive/items?cloud_account_id=...)
+	listResp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/drive/items?cloud_account_id=%d", s.account.ID))
 	s.Require().NoError(err)
 	listResp.AssertOk()
 
@@ -114,9 +114,9 @@ func (s *DriveItemAPITestSuite) TestDriveItemLifecycle() {
 
 	// 3. Create a Child Item inside the folder (use parent_uuid)
 	childFolderPayload, _ := json.Marshal(map[string]any{
-		"cloud_account_uuid": s.account.UUID,
-		"parent_uuid":        folderUUID,
-		"name":               "Sub Projects",
+		"cloud_account_id": s.account.ID,
+		"parent_uuid":      folderUUID,
+		"name":             "Sub Projects",
 	})
 	childResp, err := s.Http(s.T()).WithToken(s.token).Post("/v1/drive/items/folders", bytes.NewBuffer(childFolderPayload))
 	s.Require().NoError(err)
@@ -125,8 +125,8 @@ func (s *DriveItemAPITestSuite) TestDriveItemLifecycle() {
 	childBody, _ := childResp.Json()
 	childUUID := childBody["data"].(map[string]any)["uuid"].(string)
 
-	// 4. List items inside folder (GET /v1/drive/items?cloud_account_uuid=...&parent_uuid=...)
-	folderItemsResp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/drive/items?cloud_account_uuid=%s&parent_uuid=%s", s.account.UUID, folderUUID))
+	// 4. List items inside folder (GET /v1/drive/items?cloud_account_id=...&parent_uuid=...)
+	folderItemsResp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/drive/items?cloud_account_id=%d&parent_uuid=%s", s.account.ID, folderUUID))
 	s.Require().NoError(err)
 	folderItemsResp.AssertOk()
 
@@ -179,8 +179,8 @@ func (s *DriveItemAPITestSuite) TestDriveItemLifecycle() {
 // message, never the internal error text.
 func (s *DriveItemAPITestSuite) TestCreateFolderErrorDoesNotLeakInternalDetail() {
 	payload, _ := json.Marshal(map[string]any{
-		"cloud_account_uuid": "00000000-0000-0000-0000-000000000000",
-		"name":               "Leaky Folder",
+		"cloud_account_id": 999999999,
+		"name":             "Leaky Folder",
 	})
 
 	resp, err := s.Http(s.T()).WithToken(s.token).Post("/v1/drive/items/folders", bytes.NewBuffer(payload))
@@ -300,8 +300,8 @@ func (s *DriveItemAPITestSuite) TestDeleteItemDoesNotLeakInternalDetail() {
 // parentUUID is the UUID of the parent folder, or nil for root level.
 func (s *DriveItemAPITestSuite) createFolderItem(name string, parentUUID *string) models.DriveItem {
 	payload := map[string]any{
-		"cloud_account_uuid": s.account.UUID,
-		"name":               name,
+		"cloud_account_id": s.account.ID,
+		"name":             name,
 	}
 	if parentUUID != nil {
 		payload["parent_uuid"] = *parentUUID
@@ -325,9 +325,9 @@ func (s *DriveItemAPITestSuite) createFolderItem(name string, parentUUID *string
 // createFolder posts a folder under parentUUID ("" for root) and returns its uuid.
 func (s *DriveItemAPITestSuite) createFolder(parentUUID, name string) string {
 	payload, _ := json.Marshal(map[string]any{
-		"cloud_account_uuid": s.account.UUID,
-		"parent_uuid":        parentUUID,
-		"name":               name,
+		"cloud_account_id": s.account.ID,
+		"parent_uuid":      parentUUID,
+		"name":             name,
 	})
 	resp, err := s.Http(s.T()).WithToken(s.token).
 		Post("/v1/drive/items/folders", bytes.NewBuffer(payload))
@@ -339,7 +339,7 @@ func (s *DriveItemAPITestSuite) createFolder(parentUUID, name string) string {
 
 // listFolder returns the raw data array for a folder ("" for root).
 func (s *DriveItemAPITestSuite) listFolder(parentUUID string) []any {
-	url := fmt.Sprintf("/v1/drive/items?cloud_account_uuid=%s", s.account.UUID)
+	url := fmt.Sprintf("/v1/drive/items?cloud_account_id=%d", s.account.ID)
 	if parentUUID != "" {
 		url += "&parent_uuid=" + parentUUID
 	}
@@ -406,10 +406,10 @@ func (s *DriveItemAPITestSuite) assertMoveRejected(itemUUID, parentUUID string, 
 	s.NotContains(message, "update_failed", "the translation key must resolve")
 }
 
-func (s *DriveItemAPITestSuite) TestListItemsCarryCloudAccountUUID() {
+func (s *DriveItemAPITestSuite) TestListItemsCarryCloudAccountID() {
 	s.createFolderItem("Work", nil)
 
-	resp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/drive/items?cloud_account_uuid=%s", s.account.UUID))
+	resp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/drive/items?cloud_account_id=%d", s.account.ID))
 	s.Require().NoError(err)
 	resp.AssertOk()
 
@@ -418,8 +418,8 @@ func (s *DriveItemAPITestSuite) TestListItemsCarryCloudAccountUUID() {
 	items := body["data"].([]any)
 	s.Require().NotEmpty(items)
 	first := items[0].(map[string]any)
-	s.Equal(s.account.UUID, first["cloud_account_uuid"])
-	s.NotContains(first, "cloud_account_id")
+	s.Equal(float64(s.account.ID), first["cloud_account_id"])
+	s.NotContains(first, "cloud_account_uuid")
 }
 
 func (s *DriveItemAPITestSuite) TestPermanentDeleteFolderRecursiveWithStorageDecrement() {
@@ -621,7 +621,7 @@ func (s *DriveItemAPITestSuite) TestMoveIntoDifferentAccountFolderIsRejected() {
 // searchNames queries the list endpoint with a search term and no parent, and
 // returns the names found.
 func (s *DriveItemAPITestSuite) searchNames(term string) []string {
-	url := fmt.Sprintf("/v1/drive/items?cloud_account_uuid=%s&search=%s", s.account.UUID, term)
+	url := fmt.Sprintf("/v1/drive/items?cloud_account_id=%d&search=%s", s.account.ID, term)
 	resp, err := s.Http(s.T()).WithToken(s.token).Get(url)
 	s.Require().NoError(err)
 	resp.AssertOk()
