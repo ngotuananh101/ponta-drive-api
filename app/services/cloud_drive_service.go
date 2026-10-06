@@ -844,6 +844,27 @@ func (s *CloudDriveService) ScanBucket(ctx context.Context, userID uint, cloudAc
 				continue
 			}
 
+			// An object the app itself uploaded is stored flat under the reserved
+			// internal prefix (users/<id>/items/<uuid>-<name>) and already has a
+			// DriveItem row carrying the user's real ParentID. That key path is a
+			// storage detail, not a user-visible folder tree, so never derive
+			// folders from it and never re-parent the item: the DB row is
+			// authoritative. Refresh only the metadata that S3 owns.
+			var tracked models.DriveItem
+			_ = facades.Orm().Query().
+				Where("user_id", userID).
+				Where("cloud_account_id", cloudAccountID).
+				Where("storage_path", obj.Key).
+				First(&tracked)
+			if tracked.ID > 0 {
+				tracked.Size = obj.Size
+				tracked.ETag = obj.ETag
+				tracked.Status = models.ItemStatusReady
+				_ = facades.Orm().Query().Save(&tracked)
+				syncedCount++
+				continue
+			}
+
 			// Check if this is an S3 directory marker (ends with /)
 			isDirMarker := strings.HasSuffix(key, "/")
 			trimmedKey := strings.Trim(key, "/")
@@ -928,56 +949,43 @@ func (s *CloudDriveService) ScanBucket(ctx context.Context, userID uint, cloudAc
 				fileName := segments[len(segments)-1]
 				fileExt := strings.TrimPrefix(filepath.Ext(fileName), ".")
 
-				var existing models.DriveItem
-				_ = facades.Orm().Query().
+				// Not tracked by storage_path (checked above), so match an
+				// existing row by name within the derived folder, else create.
+				var nameMatch models.DriveItem
+				q := facades.Orm().Query().
 					Where("user_id", userID).
 					Where("cloud_account_id", cloudAccountID).
-					Where("storage_path", obj.Key).
-					First(&existing)
-
-				if existing.ID > 0 {
-					existing.Size = obj.Size
-					existing.ETag = obj.ETag
-					existing.Status = models.ItemStatusReady
-					existing.ParentID = currentParentID
-					_ = facades.Orm().Query().Save(&existing)
+					Where("name", fileName).
+					Where("type", models.ItemTypeFile)
+				if currentParentID == nil {
+					q = q.Where("parent_id IS NULL")
 				} else {
-					var nameMatch models.DriveItem
-					q := facades.Orm().Query().
-						Where("user_id", userID).
-						Where("cloud_account_id", cloudAccountID).
-						Where("name", fileName).
-						Where("type", models.ItemTypeFile)
-					if currentParentID == nil {
-						q = q.Where("parent_id IS NULL")
-					} else {
-						q = q.Where("parent_id = ?", *currentParentID)
-					}
-					_ = q.First(&nameMatch)
+					q = q.Where("parent_id = ?", *currentParentID)
+				}
+				_ = q.First(&nameMatch)
 
-					if nameMatch.ID > 0 {
-						nameMatch.StoragePath = obj.Key
-						nameMatch.Size = obj.Size
-						nameMatch.ETag = obj.ETag
-						nameMatch.Status = models.ItemStatusReady
-						_ = facades.Orm().Query().Save(&nameMatch)
-					} else {
-						newItem := models.DriveItem{
-							UUID:           uuid.New().String(),
-							UserID:         userID,
-							CloudAccountID: cloudAccountID,
-							ParentID:       currentParentID,
-							Name:           fileName,
-							Type:           models.ItemTypeFile,
-							MimeType:       obj.MimeType,
-							Size:           obj.Size,
-							Extension:      fileExt,
-							StoragePath:    obj.Key,
-							ETag:           obj.ETag,
-							Status:         models.ItemStatusReady,
-						}
-						_ = facades.Orm().Query().Create(&newItem)
+				if nameMatch.ID > 0 {
+					nameMatch.StoragePath = obj.Key
+					nameMatch.Size = obj.Size
+					nameMatch.ETag = obj.ETag
+					nameMatch.Status = models.ItemStatusReady
+					_ = facades.Orm().Query().Save(&nameMatch)
+				} else {
+					newItem := models.DriveItem{
+						UUID:           uuid.New().String(),
+						UserID:         userID,
+						CloudAccountID: cloudAccountID,
+						ParentID:       currentParentID,
+						Name:           fileName,
+						Type:           models.ItemTypeFile,
+						MimeType:       obj.MimeType,
+						Size:           obj.Size,
+						Extension:      fileExt,
+						StoragePath:    obj.Key,
+						ETag:           obj.ETag,
+						Status:         models.ItemStatusReady,
 					}
+					_ = facades.Orm().Query().Create(&newItem)
 				}
 				syncedCount++
 			}
