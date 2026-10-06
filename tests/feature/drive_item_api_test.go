@@ -350,6 +350,62 @@ func (s *DriveItemAPITestSuite) listFolder(parentUUID string) []any {
 	return body["data"].([]any)
 }
 
+// createFileItem inserts a file row directly (no S3 needed for a pure parent move).
+func (s *DriveItemAPITestSuite) createFileItem(name string) models.DriveItem {
+	file := models.DriveItem{
+		UUID:           uuid.New().String(),
+		UserID:         s.user.ID,
+		CloudAccountID: s.account.ID,
+		Name:           name,
+		Type:           models.ItemTypeFile,
+		Status:         models.ItemStatusReady,
+	}
+	s.Require().NoError(facades.Orm().Query().Create(&file))
+	return file
+}
+
+// moveItem PATCHes an item's parent_uuid ("" for root) and asserts a 200.
+func (s *DriveItemAPITestSuite) moveItem(itemUUID, parentUUID string) {
+	payload, _ := json.Marshal(map[string]any{"parent_uuid": parentUUID})
+	resp, err := s.Http(s.T()).WithToken(s.token).
+		WithHeader("Content-Type", "application/json").
+		Patch(fmt.Sprintf("/v1/drive/items/%s", itemUUID), bytes.NewBuffer(payload))
+	s.Require().NoError(err)
+	resp.AssertOk()
+}
+
+// assertOnlyChildInFolder asserts folderUUID lists exactly one item named name,
+// and that the same name does not appear at the root.
+func (s *DriveItemAPITestSuite) assertOnlyChildInFolder(folderUUID, name string) {
+	children := s.listFolder(folderUUID)
+	s.Len(children, 1)
+	s.Equal(name, children[0].(map[string]any)["name"])
+
+	for _, it := range s.listFolder("") {
+		s.NotEqual(name, it.(map[string]any)["name"])
+	}
+}
+
+// assertMoveRejected PATCHes itemUUID to parentUUID, asserts a 400, and asserts
+// the response message is the localized user message: non-empty and containing
+// none of the given raw internal error substrings, nor the translation key.
+func (s *DriveItemAPITestSuite) assertMoveRejected(itemUUID, parentUUID string, rawLeaks ...string) {
+	payload, _ := json.Marshal(map[string]any{"parent_uuid": parentUUID})
+	resp, err := s.Http(s.T()).WithToken(s.token).
+		WithHeader("Content-Type", "application/json").
+		Patch(fmt.Sprintf("/v1/drive/items/%s", itemUUID), bytes.NewBuffer(payload))
+	s.Require().NoError(err)
+	resp.AssertStatus(http.StatusBadRequest)
+
+	body, _ := resp.Json()
+	message, _ := body["message"].(string)
+	s.NotEmpty(message)
+	for _, raw := range rawLeaks {
+		s.NotContains(message, raw, "raw service error must not leak")
+	}
+	s.NotContains(message, "update_failed", "the translation key must resolve")
+}
+
 func (s *DriveItemAPITestSuite) TestListItemsCarryCloudAccountUUID() {
 	s.createFolderItem("Work", nil)
 
@@ -450,42 +506,14 @@ func (s *DriveItemAPITestSuite) TestMoveItemIntoFolder() {
 	folderA := s.createFolder("", "Move Target A")
 	folderB := s.createFolder("", "Move Target B")
 
-	// Create a file row directly (no S3 needed for a pure parent move).
-	file := models.DriveItem{
-		UUID:           uuid.New().String(),
-		UserID:         s.user.ID,
-		CloudAccountID: s.account.ID,
-		Name:           "movable.txt",
-		Type:           models.ItemTypeFile,
-		Status:         models.ItemStatusReady,
-	}
-	s.Require().NoError(facades.Orm().Query().Create(&file))
+	file := s.createFileItem("movable.txt")
 
 	// Move the file into folder A.
-	payload, _ := json.Marshal(map[string]any{"parent_uuid": folderA})
-	resp, err := s.Http(s.T()).WithToken(s.token).
-		WithHeader("Content-Type", "application/json").
-		Patch(fmt.Sprintf("/v1/drive/items/%s", file.UUID), bytes.NewBuffer(payload))
-	s.Require().NoError(err)
-	resp.AssertOk()
-
-	// It now lists under folder A and not at the root.
-	children := s.listFolder(folderA)
-	s.Len(children, 1)
-	s.Equal("movable.txt", children[0].(map[string]any)["name"])
-
-	rootItems := s.listFolder("")
-	for _, it := range rootItems {
-		s.NotEqual("movable.txt", it.(map[string]any)["name"])
-	}
+	s.moveItem(file.UUID, folderA)
+	s.assertOnlyChildInFolder(folderA, "movable.txt")
 
 	// Move it again into folder B.
-	payload2, _ := json.Marshal(map[string]any{"parent_uuid": folderB})
-	resp2, err := s.Http(s.T()).WithToken(s.token).
-		WithHeader("Content-Type", "application/json").
-		Patch(fmt.Sprintf("/v1/drive/items/%s", file.UUID), bytes.NewBuffer(payload2))
-	s.Require().NoError(err)
-	resp2.AssertOk()
+	s.moveItem(file.UUID, folderB)
 	s.Len(s.listFolder(folderB), 1)
 	s.Len(s.listFolder(folderA), 0)
 }
@@ -495,19 +523,7 @@ func (s *DriveItemAPITestSuite) TestMoveFolderIntoOwnDescendantIsRejected() {
 	parent := s.createFolder("", "Cycle Parent")
 	child := s.createFolder(parent, "Cycle Child")
 
-	payload, _ := json.Marshal(map[string]any{"parent_uuid": child})
-	resp, err := s.Http(s.T()).WithToken(s.token).
-		WithHeader("Content-Type", "application/json").
-		Patch(fmt.Sprintf("/v1/drive/items/%s", parent), bytes.NewBuffer(payload))
-	s.Require().NoError(err)
-	resp.AssertStatus(http.StatusBadRequest)
-
-	body, _ := resp.Json()
-	message, _ := body["message"].(string)
-	s.NotEmpty(message)
-	s.NotContains(message, "cannot move a folder", "raw service error must not leak")
-	s.NotContains(message, "own subfolder", "raw service error must not leak")
-	s.NotContains(message, "update_failed", "the translation key must resolve")
+	s.assertMoveRejected(parent, child, "cannot move a folder", "own subfolder")
 
 	// The tree is unchanged: child still under parent.
 	s.Len(s.listFolder(parent), 1)
@@ -517,47 +533,18 @@ func (s *DriveItemAPITestSuite) TestMoveFolderIntoOwnDescendantIsRejected() {
 func (s *DriveItemAPITestSuite) TestMoveItemToRoot() {
 	// folder A (root); file at root
 	folderA := s.createFolder("", "Move Target A")
-
-	file := models.DriveItem{
-		UUID:           uuid.New().String(),
-		UserID:         s.user.ID,
-		CloudAccountID: s.account.ID,
-		Name:           "root-file.txt",
-		Type:           models.ItemTypeFile,
-		Status:         models.ItemStatusReady,
-	}
-	s.Require().NoError(facades.Orm().Query().Create(&file))
+	file := s.createFileItem("root-file.txt")
 
 	// 1. Move file into folder A.
-	payload, _ := json.Marshal(map[string]any{"parent_uuid": folderA})
-	resp, err := s.Http(s.T()).WithToken(s.token).
-		WithHeader("Content-Type", "application/json").
-		Patch(fmt.Sprintf("/v1/drive/items/%s", file.UUID), bytes.NewBuffer(payload))
-	s.Require().NoError(err)
-	resp.AssertOk()
-
-	// It now lists under folder A and not at the root.
-	children := s.listFolder(folderA)
-	s.Len(children, 1)
-	s.Equal("root-file.txt", children[0].(map[string]any)["name"])
-
-	rootItems := s.listFolder("")
-	for _, it := range rootItems {
-		s.NotEqual("root-file.txt", it.(map[string]any)["name"])
-	}
+	s.moveItem(file.UUID, folderA)
+	s.assertOnlyChildInFolder(folderA, "root-file.txt")
 
 	// 2. Move file back to root via parent_uuid:"" (the Blocker path).
-	rootPayload, _ := json.Marshal(map[string]any{"parent_uuid": ""})
-	rootResp, err := s.Http(s.T()).WithToken(s.token).
-		WithHeader("Content-Type", "application/json").
-		Patch(fmt.Sprintf("/v1/drive/items/%s", file.UUID), bytes.NewBuffer(rootPayload))
-	s.Require().NoError(err)
-	rootResp.AssertOk()
+	s.moveItem(file.UUID, "")
 
 	// It now lists at root and not under folder A.
-	rootChildren := s.listFolder("")
 	found := false
-	for _, it := range rootChildren {
+	for _, it := range s.listFolder("") {
 		if it.(map[string]any)["name"] == "root-file.txt" {
 			found = true
 		}
@@ -573,87 +560,34 @@ func (s *DriveItemAPITestSuite) TestMoveFolderIntoFolder() {
 	folderB := s.createFolder("", "Movable Folder")
 
 	// Move B into A.
-	payload, _ := json.Marshal(map[string]any{"parent_uuid": folderA})
-	resp, err := s.Http(s.T()).WithToken(s.token).
-		WithHeader("Content-Type", "application/json").
-		Patch(fmt.Sprintf("/v1/drive/items/%s", folderB), bytes.NewBuffer(payload))
-	s.Require().NoError(err)
-	resp.AssertOk()
-
-	// B lists under A and not at root.
-	children := s.listFolder(folderA)
-	s.Len(children, 1)
-	s.Equal("Movable Folder", children[0].(map[string]any)["name"])
-
-	rootItems := s.listFolder("")
-	for _, it := range rootItems {
-		s.NotEqual("Movable Folder", it.(map[string]any)["name"])
-	}
+	s.moveItem(folderB, folderA)
+	s.assertOnlyChildInFolder(folderA, "Movable Folder")
 }
 
 // TestMoveIntoNonFolderDestinationIsRejected proves a file cannot host other items.
 func (s *DriveItemAPITestSuite) TestMoveIntoNonFolderDestinationIsRejected() {
 	// Create two files at root.
-	fileA := models.DriveItem{
-		UUID:           uuid.New().String(),
-		UserID:         s.user.ID,
-		CloudAccountID: s.account.ID,
-		Name:           "host.txt",
-		Type:           models.ItemTypeFile,
-		Status:         models.ItemStatusReady,
-	}
-	s.Require().NoError(facades.Orm().Query().Create(&fileA))
-
-	fileB := models.DriveItem{
-		UUID:           uuid.New().String(),
-		UserID:         s.user.ID,
-		CloudAccountID: s.account.ID,
-		Name:           "guest.txt",
-		Type:           models.ItemTypeFile,
-		Status:         models.ItemStatusReady,
-	}
-	s.Require().NoError(facades.Orm().Query().Create(&fileB))
+	fileA := s.createFileItem("host.txt")
+	fileB := s.createFileItem("guest.txt")
 
 	// Attempt to move fileB into fileA (a non-folder destination).
-	payload, _ := json.Marshal(map[string]any{"parent_uuid": fileA.UUID})
-	resp, err := s.Http(s.T()).WithToken(s.token).
-		WithHeader("Content-Type", "application/json").
-		Patch(fmt.Sprintf("/v1/drive/items/%s", fileB.UUID), bytes.NewBuffer(payload))
-	s.Require().NoError(err)
-	resp.AssertStatus(http.StatusBadRequest)
-
-	body, _ := resp.Json()
-	message, _ := body["message"].(string)
-	s.NotEmpty(message)
-	s.NotContains(message, "destination is not a folder", "raw service error must not leak")
-	s.NotContains(message, "update_failed", "the translation key must resolve")
+	s.assertMoveRejected(fileB.UUID, fileA.UUID, "destination is not a folder")
 }
 
 // TestMoveFolderIntoItselfIsRejected proves the self-parent guard still holds.
 func (s *DriveItemAPITestSuite) TestMoveFolderIntoItselfIsRejected() {
 	folder := s.createFolder("", "Self Parent")
 
-	payload, _ := json.Marshal(map[string]any{"parent_uuid": folder})
-	resp, err := s.Http(s.T()).WithToken(s.token).
-		WithHeader("Content-Type", "application/json").
-		Patch(fmt.Sprintf("/v1/drive/items/%s", folder), bytes.NewBuffer(payload))
-	s.Require().NoError(err)
-	resp.AssertStatus(http.StatusBadRequest)
-
-	body, _ := resp.Json()
-	message, _ := body["message"].(string)
-	s.NotEmpty(message)
-	s.NotContains(message, "own parent", "raw service error must not leak")
-	s.NotContains(message, "update_failed", "the translation key must resolve")
+	s.assertMoveRejected(folder, folder, "own parent")
 }
 
 // TestMoveIntoDifferentAccountFolderIsRejected proves the same-account guard.
 func (s *DriveItemAPITestSuite) TestMoveIntoDifferentAccountFolderIsRejected() {
 	other := models.CloudAccount{
-		UserID:    s.user.ID,
-		Name:      "Other S3",
-		Provider:  models.ProviderS3,
-		IsActive:  true,
+		UserID:   s.user.ID,
+		Name:     "Other S3",
+		Provider: models.ProviderS3,
+		IsActive: true,
 	}
 	_ = other.SetCredentials(&models.S3Credentials{
 		Bucket: "other-bucket", Region: "us-east-1",
@@ -673,28 +607,9 @@ func (s *DriveItemAPITestSuite) TestMoveIntoDifferentAccountFolderIsRejected() {
 	s.Require().NoError(facades.Orm().Query().Create(&otherFolder))
 
 	// An item in the default account.
-	item := models.DriveItem{
-		UUID:           uuid.New().String(),
-		UserID:         s.user.ID,
-		CloudAccountID: s.account.ID,
-		Name:           "cross.txt",
-		Type:           models.ItemTypeFile,
-		Status:         models.ItemStatusReady,
-	}
-	s.Require().NoError(facades.Orm().Query().Create(&item))
+	item := s.createFileItem("cross.txt")
 
-	payload, _ := json.Marshal(map[string]any{"parent_uuid": otherFolder.UUID})
-	resp, err := s.Http(s.T()).WithToken(s.token).
-		WithHeader("Content-Type", "application/json").
-		Patch(fmt.Sprintf("/v1/drive/items/%s", item.UUID), bytes.NewBuffer(payload))
-	s.Require().NoError(err)
-	resp.AssertStatus(http.StatusBadRequest)
-
-	body, _ := resp.Json()
-	message, _ := body["message"].(string)
-	s.NotEmpty(message)
-	s.NotContains(message, "destination folder not found", "raw service error must not leak")
-	s.NotContains(message, "update_failed", "the translation key must resolve")
+	s.assertMoveRejected(item.UUID, otherFolder.UUID, "destination folder not found")
 
 	// The item must stay put: still at root of the default account, parent_id nil.
 	var refreshed models.DriveItem
