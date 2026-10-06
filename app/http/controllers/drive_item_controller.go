@@ -311,13 +311,21 @@ func (c *DriveItemController) Update(ctx http.Context) http.Response {
 		name = ctx.Request().Input("name")
 	}
 
+	// `parent_uuid` is a *string so "absent" (rename only) is distinguishable
+	// from "present but empty" (move to root). Absent => nil => no parent change.
 	var parentID *uint
-	if req.ParentUUID != "" {
-		pid, err := c.service.ResolveDriveItemID(context.Background(), user.ID, req.ParentUUID)
-		if err != nil {
-			return failResponse(ctx, http.StatusBadRequest, "drive.update_failed", err)
+	if req.ParentUUID != nil {
+		if *req.ParentUUID == "" {
+			// Move to root: the service treats a non-nil pointer to 0 as "detach".
+			var root uint
+			parentID = &root
+		} else {
+			pid, err := c.service.ResolveDriveItemID(context.Background(), user.ID, *req.ParentUUID)
+			if err != nil {
+				return failResponse(ctx, http.StatusBadRequest, "drive.update_failed", err)
+			}
+			parentID = &pid
 		}
-		parentID = &pid
 	}
 
 	// Capture the current name so a rename can be detected after the update:

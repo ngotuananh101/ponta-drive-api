@@ -206,9 +206,9 @@ func (s *DriveItemAPITestSuite) TestCreateFolderErrorDoesNotLeakInternalDetail()
 // chain from it, root first, so the breadcrumb can be rendered after a reload.
 func (s *DriveItemAPITestSuite) TestBreadcrumb() {
 	// root -> Work -> Sub -> Deep
-	work := s.createFolder("Work", nil)
-	sub := s.createFolder("Sub", &work.UUID)
-	deep := s.createFolder("Deep", &sub.UUID)
+	work := s.createFolderItem("Work", nil)
+	sub := s.createFolderItem("Sub", &work.UUID)
+	deep := s.createFolderItem("Deep", &sub.UUID)
 
 	resp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/drive/items/%s/breadcrumb", deep.UUID))
 	s.Require().NoError(err)
@@ -296,9 +296,9 @@ func (s *DriveItemAPITestSuite) TestDeleteItemDoesNotLeakInternalDetail() {
 		"the translation key must resolve: an unresolved key would be shown to the user verbatim")
 }
 
-// createFolder posts a folder via the API and returns the created item.
+// createFolderItem posts a folder via the API and returns the created item.
 // parentUUID is the UUID of the parent folder, or nil for root level.
-func (s *DriveItemAPITestSuite) createFolder(name string, parentUUID *string) models.DriveItem {
+func (s *DriveItemAPITestSuite) createFolderItem(name string, parentUUID *string) models.DriveItem {
 	payload := map[string]any{
 		"cloud_account_uuid": s.account.UUID,
 		"name":               name,
@@ -322,8 +322,92 @@ func (s *DriveItemAPITestSuite) createFolder(name string, parentUUID *string) mo
 	return item
 }
 
+// createFolder posts a folder under parentUUID ("" for root) and returns its uuid.
+func (s *DriveItemAPITestSuite) createFolder(parentUUID, name string) string {
+	payload, _ := json.Marshal(map[string]any{
+		"cloud_account_uuid": s.account.UUID,
+		"parent_uuid":        parentUUID,
+		"name":               name,
+	})
+	resp, err := s.Http(s.T()).WithToken(s.token).
+		Post("/v1/drive/items/folders", bytes.NewBuffer(payload))
+	s.Require().NoError(err)
+	resp.AssertStatus(http.StatusCreated)
+	body, _ := resp.Json()
+	return body["data"].(map[string]any)["uuid"].(string)
+}
+
+// listFolder returns the raw data array for a folder ("" for root).
+func (s *DriveItemAPITestSuite) listFolder(parentUUID string) []any {
+	url := fmt.Sprintf("/v1/drive/items?cloud_account_uuid=%s", s.account.UUID)
+	if parentUUID != "" {
+		url += "&parent_uuid=" + parentUUID
+	}
+	resp, err := s.Http(s.T()).WithToken(s.token).Get(url)
+	s.Require().NoError(err)
+	resp.AssertOk()
+	body, _ := resp.Json()
+	return body["data"].([]any)
+}
+
+// createFileItem inserts a file row directly (no S3 needed for a pure parent move).
+func (s *DriveItemAPITestSuite) createFileItem(name string) models.DriveItem {
+	file := models.DriveItem{
+		UUID:           uuid.New().String(),
+		UserID:         s.user.ID,
+		CloudAccountID: s.account.ID,
+		Name:           name,
+		Type:           models.ItemTypeFile,
+		Status:         models.ItemStatusReady,
+	}
+	s.Require().NoError(facades.Orm().Query().Create(&file))
+	return file
+}
+
+// moveItem PATCHes an item's parent_uuid ("" for root) and asserts a 200.
+func (s *DriveItemAPITestSuite) moveItem(itemUUID, parentUUID string) {
+	payload, _ := json.Marshal(map[string]any{"parent_uuid": parentUUID})
+	resp, err := s.Http(s.T()).WithToken(s.token).
+		WithHeader("Content-Type", "application/json").
+		Patch(fmt.Sprintf("/v1/drive/items/%s", itemUUID), bytes.NewBuffer(payload))
+	s.Require().NoError(err)
+	resp.AssertOk()
+}
+
+// assertOnlyChildInFolder asserts folderUUID lists exactly one item named name,
+// and that the same name does not appear at the root.
+func (s *DriveItemAPITestSuite) assertOnlyChildInFolder(folderUUID, name string) {
+	children := s.listFolder(folderUUID)
+	s.Len(children, 1)
+	s.Equal(name, children[0].(map[string]any)["name"])
+
+	for _, it := range s.listFolder("") {
+		s.NotEqual(name, it.(map[string]any)["name"])
+	}
+}
+
+// assertMoveRejected PATCHes itemUUID to parentUUID, asserts a 400, and asserts
+// the response message is the localized user message: non-empty and containing
+// none of the given raw internal error substrings, nor the translation key.
+func (s *DriveItemAPITestSuite) assertMoveRejected(itemUUID, parentUUID string, rawLeaks ...string) {
+	payload, _ := json.Marshal(map[string]any{"parent_uuid": parentUUID})
+	resp, err := s.Http(s.T()).WithToken(s.token).
+		WithHeader("Content-Type", "application/json").
+		Patch(fmt.Sprintf("/v1/drive/items/%s", itemUUID), bytes.NewBuffer(payload))
+	s.Require().NoError(err)
+	resp.AssertStatus(http.StatusBadRequest)
+
+	body, _ := resp.Json()
+	message, _ := body["message"].(string)
+	s.NotEmpty(message)
+	for _, raw := range rawLeaks {
+		s.NotContains(message, raw, "raw service error must not leak")
+	}
+	s.NotContains(message, "update_failed", "the translation key must resolve")
+}
+
 func (s *DriveItemAPITestSuite) TestListItemsCarryCloudAccountUUID() {
-	s.createFolder("Work", nil)
+	s.createFolderItem("Work", nil)
 
 	resp, err := s.Http(s.T()).WithToken(s.token).Get(fmt.Sprintf("/v1/drive/items?cloud_account_uuid=%s", s.account.UUID))
 	s.Require().NoError(err)
@@ -344,10 +428,10 @@ func (s *DriveItemAPITestSuite) TestPermanentDeleteFolderRecursiveWithStorageDec
 	_ = facades.Orm().Query().Save(&s.account)
 
 	// 1. Create a parent folder
-	parent := s.createFolder("ParentFolder", nil)
+	parent := s.createFolderItem("ParentFolder", nil)
 
 	// 2. Create child folder
-	child := s.createFolder("ChildFolder", &parent.UUID)
+	child := s.createFolderItem("ChildFolder", &parent.UUID)
 
 	// 3. Create file inside child folder directly in DB
 	file := models.DriveItem{
@@ -414,4 +498,122 @@ func (s *DriveItemAPITestSuite) TestStorageDecrementDoesNotGoBelowZero() {
 	var refreshedAccount models.CloudAccount
 	_ = facades.Orm().Query().Where("id", s.account.ID).First(&refreshedAccount)
 	s.Equal(int64(0), refreshedAccount.UsedStorage, "storage decrement must be floored at 0")
+}
+
+// TestMoveItemIntoFolder moves a file into a folder and verifies via listing.
+func (s *DriveItemAPITestSuite) TestMoveItemIntoFolder() {
+	// folder A (root), folder B (root)
+	folderA := s.createFolder("", "Move Target A")
+	folderB := s.createFolder("", "Move Target B")
+
+	file := s.createFileItem("movable.txt")
+
+	// Move the file into folder A.
+	s.moveItem(file.UUID, folderA)
+	s.assertOnlyChildInFolder(folderA, "movable.txt")
+
+	// Move it again into folder B.
+	s.moveItem(file.UUID, folderB)
+	s.Len(s.listFolder(folderB), 1)
+	s.Len(s.listFolder(folderA), 0)
+}
+
+// TestMoveFolderIntoOwnDescendantIsRejected proves the cycle guard.
+func (s *DriveItemAPITestSuite) TestMoveFolderIntoOwnDescendantIsRejected() {
+	parent := s.createFolder("", "Cycle Parent")
+	child := s.createFolder(parent, "Cycle Child")
+
+	s.assertMoveRejected(parent, child, "cannot move a folder", "own subfolder")
+
+	// The tree is unchanged: child still under parent.
+	s.Len(s.listFolder(parent), 1)
+}
+
+// TestMoveItemToRoot proves the Blocker fix: parent_uuid:"" moves an item to root.
+func (s *DriveItemAPITestSuite) TestMoveItemToRoot() {
+	// folder A (root); file at root
+	folderA := s.createFolder("", "Move Target A")
+	file := s.createFileItem("root-file.txt")
+
+	// 1. Move file into folder A.
+	s.moveItem(file.UUID, folderA)
+	s.assertOnlyChildInFolder(folderA, "root-file.txt")
+
+	// 2. Move file back to root via parent_uuid:"" (the Blocker path).
+	s.moveItem(file.UUID, "")
+
+	// It now lists at root and not under folder A.
+	found := false
+	for _, it := range s.listFolder("") {
+		if it.(map[string]any)["name"] == "root-file.txt" {
+			found = true
+		}
+	}
+	s.True(found, "file must be back at root after parent_uuid: \"\"")
+	s.Len(s.listFolder(folderA), 0)
+}
+
+// TestMoveFolderIntoFolder proves folder-to-folder moves at the API level.
+func (s *DriveItemAPITestSuite) TestMoveFolderIntoFolder() {
+	// folder A and folder B at root
+	folderA := s.createFolder("", "Target Folder")
+	folderB := s.createFolder("", "Movable Folder")
+
+	// Move B into A.
+	s.moveItem(folderB, folderA)
+	s.assertOnlyChildInFolder(folderA, "Movable Folder")
+}
+
+// TestMoveIntoNonFolderDestinationIsRejected proves a file cannot host other items.
+func (s *DriveItemAPITestSuite) TestMoveIntoNonFolderDestinationIsRejected() {
+	// Create two files at root.
+	fileA := s.createFileItem("host.txt")
+	fileB := s.createFileItem("guest.txt")
+
+	// Attempt to move fileB into fileA (a non-folder destination).
+	s.assertMoveRejected(fileB.UUID, fileA.UUID, "destination is not a folder")
+}
+
+// TestMoveFolderIntoItselfIsRejected proves the self-parent guard still holds.
+func (s *DriveItemAPITestSuite) TestMoveFolderIntoItselfIsRejected() {
+	folder := s.createFolder("", "Self Parent")
+
+	s.assertMoveRejected(folder, folder, "own parent")
+}
+
+// TestMoveIntoDifferentAccountFolderIsRejected proves the same-account guard.
+func (s *DriveItemAPITestSuite) TestMoveIntoDifferentAccountFolderIsRejected() {
+	other := models.CloudAccount{
+		UserID:   s.user.ID,
+		Name:     "Other S3",
+		Provider: models.ProviderS3,
+		IsActive: true,
+	}
+	_ = other.SetCredentials(&models.S3Credentials{
+		Bucket: "other-bucket", Region: "us-east-1",
+		AccessKeyID: "AKIA...", SecretAccessKey: "secret...",
+	})
+	s.Require().NoError(facades.Orm().Query().Create(&other))
+
+	// A folder in the OTHER account.
+	otherFolder := models.DriveItem{
+		UUID:           uuid.New().String(),
+		UserID:         s.user.ID,
+		CloudAccountID: other.ID,
+		Name:           "Other Account Folder",
+		Type:           models.ItemTypeFolder,
+		Status:         models.ItemStatusReady,
+	}
+	s.Require().NoError(facades.Orm().Query().Create(&otherFolder))
+
+	// An item in the default account.
+	item := s.createFileItem("cross.txt")
+
+	s.assertMoveRejected(item.UUID, otherFolder.UUID, "destination folder not found")
+
+	// The item must stay put: still at root of the default account, parent_id nil.
+	var refreshed models.DriveItem
+	s.Require().NoError(facades.Orm().Query().Where("uuid", item.UUID).First(&refreshed))
+	s.Nil(refreshed.ParentID, "item must remain at root after a rejected cross-account move")
+	s.Equal(s.account.ID, refreshed.CloudAccountID, "item must stay in its original account")
 }
