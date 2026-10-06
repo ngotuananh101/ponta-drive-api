@@ -195,6 +195,112 @@ func (s *BucketSyncTestSuite) TestBucketSyncWorkflow() {
 	s.Equal(int64(4), totalItems) // photos, vacation, beach.jpg, readme.txt
 }
 
+// TestSyncDoesNotMaterializeInternalUploadPrefix reproduces the bug where a
+// synced bucket materialized the internal upload namespace `users/<id>/items/`
+// as user-visible folders and re-parented an uploaded file into them, losing
+// the folder the user actually put it in.
+//
+// An uploaded file is stored flat at `users/<id>/items/<uuid>-<name>` and is
+// already tracked by its own DriveItem row (with the user's real ParentID). The
+// key path is an internal storage detail, so a scan must not derive folders
+// from it nor move the file.
+func (s *BucketSyncTestSuite) TestSyncDoesNotMaterializeInternalUploadPrefix() {
+	internalKey := fmt.Sprintf("users/%d/items/%s-UniKeyNT.exe", s.user.ID, uuid.New().String())
+
+	// A bucket that lists that very object under the reserved internal prefix.
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("list-type") == "2" {
+			w.Header().Set("Content-Type", "application/xml")
+			_, _ = w.Write([]byte(fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <Name>mock-bucket</Name>
+  <Prefix></Prefix>
+  <KeyCount>1</KeyCount>
+  <MaxKeys>1000</MaxKeys>
+  <IsTruncated>false</IsTruncated>
+  <Contents>
+    <Key>%s</Key>
+    <LastModified>2026-09-20T10:00:00.000Z</LastModified>
+    <ETag>"mock-etag-unikey"</ETag>
+    <Size>123</Size>
+    <StorageClass>STANDARD</StorageClass>
+  </Contents>
+</ListBucketResult>`, internalKey)))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer mock.Close()
+
+	account := models.CloudAccount{
+		UserID:   s.user.ID,
+		Name:     "Internal Prefix Storage",
+		Provider: models.ProviderMinIO,
+		IsActive: true,
+	}
+	_ = account.SetCredentials(&models.S3Credentials{
+		Endpoint:        mock.URL,
+		Bucket:          "mock-bucket",
+		Region:          "us-east-1",
+		AccessKeyID:     "mock-key",
+		SecretAccessKey: "mock-secret",
+		UsePathStyle:    true,
+	})
+	s.Require().NoError(facades.Orm().Query().Create(&account))
+
+	// The folder the file really belongs to ("test 2"), and the uploaded file
+	// itself — same account that will be synced.
+	realParent := models.DriveItem{
+		UUID:           uuid.New().String(),
+		UserID:         s.user.ID,
+		CloudAccountID: account.ID,
+		Name:           "test 2",
+		Type:           models.ItemTypeFolder,
+		Status:         models.ItemStatusReady,
+	}
+	s.Require().NoError(facades.Orm().Query().Create(&realParent))
+
+	file := models.DriveItem{
+		UUID:           uuid.New().String(),
+		UserID:         s.user.ID,
+		CloudAccountID: account.ID,
+		ParentID:       &realParent.ID,
+		Name:           "UniKeyNT.exe",
+		Type:           models.ItemTypeFile,
+		StoragePath:    internalKey,
+		Status:         models.ItemStatusReady,
+	}
+	s.Require().NoError(facades.Orm().Query().Create(&file))
+
+	resp, err := s.Http(s.T()).WithToken(s.token).Post(fmt.Sprintf("/v1/cloud-accounts/%s/sync", account.UUID), nil)
+	s.Require().NoError(err)
+	resp.AssertOk()
+
+	// The file must still live in "test 2" — sync must not re-parent it.
+	var reloaded models.DriveItem
+	s.Require().NoError(facades.Orm().Query().Where("id", file.ID).First(&reloaded))
+	s.Require().NotNil(reloaded.ParentID)
+	s.Equal(realParent.ID, *reloaded.ParentID, "sync must not move an uploaded file out of its folder")
+
+	// And no phantom "users" tree may appear at the root.
+	var phantom []models.DriveItem
+	s.Require().NoError(facades.Orm().Query().
+		Where("user_id", s.user.ID).
+		Where("cloud_account_id", account.ID).
+		Where("name", "users").
+		Find(&phantom))
+	s.Empty(phantom, "the internal upload prefix must never become a folder")
+
+	// The object was already tracked, so sync must not duplicate it.
+	totalFiles, err := facades.Orm().Query().Model(&models.DriveItem{}).
+		Where("user_id", s.user.ID).
+		Where("cloud_account_id", account.ID).
+		Where("type", models.ItemTypeFile).
+		Count()
+	s.Require().NoError(err)
+	s.Equal(int64(1), totalFiles)
+}
+
 // TestCreateAccountAutoSyncs pins the "save a connection and it starts syncing"
 // behaviour. Previously a new account stayed empty until someone found the sync
 // endpoint, so the drive view showed nothing. Store now dispatches the same job
