@@ -150,14 +150,16 @@ func (s *CloudDriveService) ListItems(ctx context.Context, userID uint, cloudAcc
 		Where("user_id", userID).
 		Where("cloud_account_id", cloudAccountID)
 
-	if parentID == nil || *parentID == 0 {
+	// A search spans the whole account rather than the folder in view, so the
+	// parent_id constraint is dropped when a term is present. Browsing (no
+	// term) stays scoped to the current folder.
+	trimmedSearch := strings.TrimSpace(search)
+	if trimmedSearch != "" {
+		query = query.Where("name LIKE ?", "%"+trimmedSearch+"%")
+	} else if parentID == nil || *parentID == 0 {
 		query = query.Where("parent_id IS NULL")
 	} else {
 		query = query.Where("parent_id", *parentID)
-	}
-
-	if strings.TrimSpace(search) != "" {
-		query = query.Where("name LIKE ?", "%"+strings.TrimSpace(search)+"%")
 	}
 
 	if itemType == models.ItemTypeFolder || itemType == models.ItemTypeFile {
