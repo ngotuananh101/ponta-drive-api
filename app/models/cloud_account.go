@@ -50,8 +50,9 @@ type CloudAccount struct {
 	UsedStorage  int64      `gorm:"column:used_storage;default:0" json:"used_storage"`
 	orm.SoftDeletes
 
-	// UUID is the public identifier exposed by the API and used in drive URLs.
-	// Numeric ID remains the internal key.
+	// UUID is a legacy unique column retained for existing rows and browser
+	// history. It is no longer part of the API contract: the numeric id is the
+	// public identifier exposed by the API and used in drive URLs.
 	UUID string `gorm:"column:uuid;size:36;uniqueIndex" json:"uuid"`
 }
 
@@ -90,7 +91,6 @@ func (c *CloudAccount) GetCredentials() (*S3Credentials, error) {
 
 // ToResponse returns a sanitized map representation for API responses, masking SecretAccessKey.
 func (c *CloudAccount) ToResponse() map[string]any {
-	ensureAccountUUID(c)
 	var safeCreds map[string]any
 	if creds, err := c.GetCredentials(); err == nil && creds != nil {
 		safeCreds = map[string]any{
@@ -109,7 +109,7 @@ func (c *CloudAccount) ToResponse() map[string]any {
 	}
 
 	return map[string]any{
-		"uuid":           c.UUID,
+		"id":             c.ID,
 		"name":           c.Name,
 		"provider":       c.Provider,
 		"credentials":    safeCreds,
@@ -124,19 +124,9 @@ func (c *CloudAccount) ToResponse() map[string]any {
 	}
 }
 
-// ensureAccountUUID assigns a uuid in memory when a row carries none, so a
-// response never exposes a blank identifier. It does not write: a GET must not
-// mutate the database. The migration backfill and the BeforeCreate hook are the
-// real fixes; this only covers rows that predate or bypassed them.
-func ensureAccountUUID(c *CloudAccount) {
-	if c.UUID == "" {
-		c.UUID = uuid.New().String()
-	}
-}
-
-// BeforeCreate assigns a uuid when none was supplied. GORM fires this on every
-// create through Goravel's Query().Create(), so the controller, future code and
-// test fixtures all get a uuid without repeating the assignment.
+// BeforeCreate assigns a uuid when none was supplied, so the legacy unique
+// column stays populated for rows created through the app. GORM fires this on
+// every create through Goravel's Query().Create().
 func (c *CloudAccount) BeforeCreate(tx *gorm.DB) error {
 	if c.UUID == "" {
 		c.UUID = uuid.New().String()

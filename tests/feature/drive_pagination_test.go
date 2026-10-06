@@ -189,7 +189,7 @@ func (s *DrivePaginationTestSuite) TestCursorPredicateDropsColumnComparisonForNu
 // pagination metadata.
 func (s *DrivePaginationTestSuite) listPage(query string) ([]string, bool, string) {
 	resp, err := s.Http(s.T()).WithToken(s.token).
-		Get(fmt.Sprintf("/v1/drive/items?cloud_account_uuid=%s%s", s.account.UUID, query))
+		Get(fmt.Sprintf("/v1/drive/items?cloud_account_id=%d%s", s.account.ID, query))
 	s.Require().NoError(err)
 	resp.AssertOk()
 
@@ -323,7 +323,7 @@ func (s *DrivePaginationTestSuite) TestInvalidCursorIsRejected() {
 
 	// "!!" is not in the base64 alphabet, so decoding fails before any query.
 	resp, err := s.Http(s.T()).WithToken(s.token).
-		Get(fmt.Sprintf("/v1/drive/items?cloud_account_uuid=%s&cursor=!!", s.account.UUID))
+		Get(fmt.Sprintf("/v1/drive/items?cloud_account_id=%d&cursor=!!", s.account.ID))
 	s.Require().NoError(err)
 	resp.AssertStatus(http.StatusBadRequest)
 

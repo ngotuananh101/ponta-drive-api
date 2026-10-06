@@ -48,23 +48,25 @@ func (s *CloudDriveService) GetDriver(ctx context.Context, userID uint, cloudAcc
 	return driver, &account, nil
 }
 
-// ResolveCloudAccountID maps a public account uuid to the numeric id the rest of
-// the service uses. The API speaks uuid; internal queries keep using id.
-func (s *CloudDriveService) ResolveCloudAccountID(ctx context.Context, userID uint, accountUUID string) (uint, error) {
-	if accountUUID == "" {
-		return 0, errors.New("cloud account uuid is required")
+// EnsureCloudAccountOwnership verifies the numeric cloud account id belongs to
+// the user. The API speaks the numeric id directly, so this is the ownership
+// gate every input path shares; it returns a generic error that callers map to
+// a user-facing message.
+func (s *CloudDriveService) EnsureCloudAccountOwnership(ctx context.Context, userID uint, cloudAccountID uint) error {
+	if cloudAccountID == 0 {
+		return errors.New("cloud account id is required")
 	}
 
 	var account models.CloudAccount
 	err := facades.Orm().Query().
-		Where("uuid", accountUUID).
+		Where("id", cloudAccountID).
 		Where("user_id", userID).
 		First(&account)
 	if err != nil || account.ID == 0 {
-		return 0, errors.New("cloud account not found or access denied")
+		return errors.New("cloud account not found or access denied")
 	}
 
-	return account.ID, nil
+	return nil
 }
 
 // ResolveDriveItemID maps a public item uuid to its numeric id, scoped to the

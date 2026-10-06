@@ -99,9 +99,11 @@ func (s *CloudAccountTestSuite) TestModelCredentialsEncryptionRoundTrip() {
 	s.False(decryptedCreds.UsePathStyle)
 	s.Equal("https://cdn.example.com", decryptedCreds.PublicURL)
 
-	// ToResponse check: SecretAccessKey must not leak
+	// ToResponse check: SecretAccessKey must not leak, and the public identifier
+	// is the numeric id (uuid stays internal).
 	resp := fetched.ToResponse()
-	s.Equal(fetched.UUID, resp["uuid"])
+	s.Equal(fetched.ID, resp["id"])
+	s.NotContains(resp, "uuid")
 	s.Equal(fetched.Name, resp["name"])
 	safeCreds, ok := resp["credentials"].(map[string]any)
 	s.Require().True(ok)

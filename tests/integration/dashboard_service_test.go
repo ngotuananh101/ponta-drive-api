@@ -190,24 +190,31 @@ func TestDashboardServiceGetSummaryIsScopedToUser(t *testing.T) {
 	assert.Equal(t, 0.0, summary.TotalStorage.Percent)
 }
 
-func TestDashboardSummaryExposesUUIDs(t *testing.T) {
+func TestDashboardSummaryExposesIDs(t *testing.T) {
 	f := seedDashboardFixture(t)
 
 	summary, err := services.NewDashboardService().GetSummary(context.Background(), f.user.ID)
 	require.NoError(t, err)
 
 	require.NotEmpty(t, summary.Clouds)
-	assert.Contains(t, summary.Clouds[0], "uuid")
-	assert.NotContains(t, summary.Clouds[0], "id")
+	assert.Contains(t, summary.Clouds[0], "id")
+	assert.Equal(t, f.cloudA.ID, summary.Clouds[0]["id"])
+	assert.NotContains(t, summary.Clouds[0], "uuid")
 
 	for _, file := range summary.SuggestedFiles {
-		assert.Contains(t, file, "cloud_account_uuid")
-		assert.NotContains(t, file, "cloud_account_id")
+		assert.Contains(t, file, "cloud_account_id")
+		assert.Equal(t, f.cloudA.ID, file["cloud_account_id"])
+		assert.NotContains(t, file, "cloud_account_uuid")
 	}
 
 	for _, act := range summary.RecentActivities {
-		assert.Contains(t, act, "cloud_account_uuid", "activity keeps cloud_id and gains the uuid")
-		assert.Equal(t, f.cloudA.UUID, act["cloud_account_uuid"])
+		assert.Contains(t, act, "cloud_account_id")
+		// ActivityLog.CloudAccountID is nullable, so the response carries a
+		// *uint (JSON number or null) rather than a bare value.
+		cloudID, ok := act["cloud_account_id"].(*uint)
+		require.True(t, ok, "cloud_account_id should be a *uint")
+		require.NotNil(t, cloudID)
+		assert.Equal(t, f.cloudA.ID, *cloudID)
 	}
 }
 

@@ -38,15 +38,15 @@ func (ActivityLog) TableName() string {
 // A nil or non-decodable value is surfaced as nil.
 func (a *ActivityLog) ToResponse() map[string]any {
 	return map[string]any{
-		"id":          a.ID,
-		"action":      a.Action,
-		"target_name": a.TargetName,
-		"target_uuid": a.TargetUUID,
-		"cloud_id":    a.CloudAccountID,
-		"ip_address":  a.IPAddress,
-		"user_agent":  a.UserAgent,
-		"metadata":    a.decodedMetadata(),
-		"created_at":  a.CreatedAt.Format(time.RFC3339),
+		"id":               a.ID,
+		"action":           a.Action,
+		"target_name":      a.TargetName,
+		"target_uuid":      a.TargetUUID,
+		"cloud_account_id": a.CloudAccountID,
+		"ip_address":       a.IPAddress,
+		"user_agent":       a.UserAgent,
+		"metadata":         a.decodedMetadata(),
+		"created_at":       a.CreatedAt.Format(time.RFC3339),
 	}
 }
 

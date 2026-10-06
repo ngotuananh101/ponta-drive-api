@@ -68,34 +68,19 @@ func TestCloudAccountToResponseWithoutSync(t *testing.T) {
 	assert.Nil(t, resp["last_synced_at"], "an account that never synced should report null")
 }
 
-func TestCloudAccountToResponseExposesUUIDNotID(t *testing.T) {
+func TestCloudAccountToResponseExposesIDNotUUID(t *testing.T) {
 	account := models.CloudAccount{
-		UUID:       "11111111-1111-1111-1111-111111111111",
 		UserID:     10,
 		Name:       "Primary S3",
 		Provider:   models.ProviderS3,
 		SyncStatus: "idle",
 	}
+	account.ID = 42
+	account.UUID = "11111111-1111-1111-1111-111111111111"
 
 	resp := account.ToResponse()
 
-	assert.Equal(t, "11111111-1111-1111-1111-111111111111", resp["uuid"])
-	assert.NotContains(t, resp, "id", "numeric id must not be exposed")
+	assert.Equal(t, uint(42), resp["id"])
+	assert.NotContains(t, resp, "uuid", "the numeric id is the public identifier; uuid is internal only")
 	assert.NotContains(t, resp, "user_id", "user_id must not be exposed")
-}
-
-// A row that slipped past the migration/hook (raw SQL insert, or created before
-// the column existed) must still serialize a usable uuid rather than a blank
-// string, which would break every URL built from it.
-func TestCloudAccountToResponseHealsBlankUUID(t *testing.T) {
-	account := models.CloudAccount{
-		UserID:   10,
-		Name:     "Legacy S3",
-		Provider: models.ProviderS3,
-	}
-
-	resp := account.ToResponse()
-
-	uuid, _ := resp["uuid"].(string)
-	assert.Len(t, uuid, 36, "a blank uuid must be replaced on read")
 }

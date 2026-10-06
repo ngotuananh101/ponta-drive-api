@@ -30,9 +30,8 @@ func NewUploadController() *UploadController {
 	}
 }
 
-func (c *UploadController) resolveUploadTargets(ctx context.Context, userID uint, cloudAccountUUID, parentUUID string) (uint, *uint, error) {
-	cloudAccountID, err := c.driveService.ResolveCloudAccountID(ctx, userID, cloudAccountUUID)
-	if err != nil {
+func (c *UploadController) resolveUploadTargets(ctx context.Context, userID uint, cloudAccountID uint, parentUUID string) (uint, *uint, error) {
+	if err := c.driveService.EnsureCloudAccountOwnership(ctx, userID, cloudAccountID); err != nil {
 		return 0, nil, err
 	}
 
@@ -49,8 +48,6 @@ func (c *UploadController) resolveUploadTargets(ctx context.Context, userID uint
 }
 
 func (c *UploadController) finalizeUpload(ctx http.Context, userID uint, item *models.DriveItem) http.Response {
-	item.CloudAccountUUID = c.accountUUIDFor(item)
-
 	activityService := services.NewActivityService()
 	activityService.LogSafe(userID, item.CloudAccountID, "uploaded", item.Name, &item.UUID, helpers.GetClientIP(ctx), helpers.GetUserAgent(ctx), map[string]any{"size": item.Size, "mime": item.MimeType})
 
@@ -83,7 +80,7 @@ func (c *UploadController) InitiatePresigned(ctx http.Context) http.Response {
 		})
 	}
 
-	cloudAccountID, parentID, err := c.resolveUploadTargets(context.Background(), user.ID, req.CloudAccountUUID, req.ParentUUID)
+	cloudAccountID, parentID, err := c.resolveUploadTargets(context.Background(), user.ID, req.CloudAccountID, req.ParentUUID)
 	if err != nil {
 		return failResponse(ctx, http.StatusBadRequest, errKeyUploadInitiateFailed, err)
 	}
@@ -100,8 +97,6 @@ func (c *UploadController) InitiatePresigned(ctx http.Context) http.Response {
 	if err != nil {
 		return failResponse(ctx, http.StatusBadRequest, errKeyUploadInitiateFailed, err)
 	}
-
-	item.CloudAccountUUID = req.CloudAccountUUID
 
 	return ctx.Response().Success().Json(http.Json{
 		"status": "ok",
@@ -170,7 +165,7 @@ func (c *UploadController) InitMultipart(ctx http.Context) http.Response {
 		})
 	}
 
-	cloudAccountID, parentID, err := c.resolveUploadTargets(context.Background(), user.ID, req.CloudAccountUUID, req.ParentUUID)
+	cloudAccountID, parentID, err := c.resolveUploadTargets(context.Background(), user.ID, req.CloudAccountID, req.ParentUUID)
 	if err != nil {
 		return failResponse(ctx, http.StatusBadRequest, errKeyUploadInitiateFailed, err)
 	}
@@ -331,22 +326,4 @@ func (c *UploadController) AbortMultipart(ctx http.Context) http.Response {
 		"status":  "ok",
 		"message": facades.Lang(ctx).Get("upload.session_aborted"),
 	})
-}
-
-// accountUUIDFor resolves the public account uuid for an item, best-effort.
-//
-// The session row holds only the internal numeric account id; we read the
-// account's uuid in a single cheap query so the response can carry the public
-// identifier without exposing the database pk.
-func (c *UploadController) accountUUIDFor(item *models.DriveItem) string {
-	if item == nil || item.CloudAccountID == 0 {
-		return ""
-	}
-
-	var account models.CloudAccount
-	if err := facades.Orm().Query().Where("id", item.CloudAccountID).Select("uuid").First(&account); err == nil {
-		return account.UUID
-	}
-
-	return ""
 }
