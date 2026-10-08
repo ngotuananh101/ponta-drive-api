@@ -147,3 +147,25 @@ func (s *PreviewAPITestSuite) TestPreviewFolderRejected() {
 	s.Require().NoError(err)
 	resp.AssertStatus(http.StatusBadRequest)
 }
+
+func (s *PreviewAPITestSuite) TestContentStreamsWithinCap() {
+	// Size matches the mock's body (see SetupTest); the handler echoes it as
+	// Content-Length, so a mismatch would truncate the read.
+	resp, err := s.Http(s.T()).WithToken(s.token).Get(
+		fmt.Sprintf("/v1/drive/items/%s/content", s.item.UUID))
+	s.Require().NoError(err)
+	resp.AssertOk()
+	s.Equal("inline", resp.Headers().Get("Content-Disposition"))
+	content, _ := resp.Content()
+	s.Equal(string(s.fileData), content)
+}
+
+func (s *PreviewAPITestSuite) TestContentRejectsOverCap() {
+	s.item.Size = 51 * 1024 * 1024
+	s.Require().NoError(facades.Orm().Query().Save(&s.item))
+
+	resp, err := s.Http(s.T()).WithToken(s.token).Get(
+		fmt.Sprintf("/v1/drive/items/%s/content", s.item.UUID))
+	s.Require().NoError(err)
+	resp.AssertStatus(http.StatusRequestEntityTooLarge)
+}

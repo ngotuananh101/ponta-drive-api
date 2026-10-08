@@ -468,3 +468,44 @@ func (c *DriveItemController) Preview(ctx http.Context) http.Response {
 	})
 }
 
+// Content proxies an item's bytes for preview. It is same-origin, so the
+// browser's CORS rules do not apply, and it enforces the preview size cap
+// server-side rather than trusting the client to have respected it.
+func (c *DriveItemController) Content(ctx http.Context) http.Response {
+	user, itemUUID, errResp := c.resolveUserAndItemUUID(ctx)
+	if errResp != nil {
+		return errResp
+	}
+
+	item, err := c.service.GetItemByUUID(context.Background(), user.ID, itemUUID)
+	if err != nil {
+		return failResponse(ctx, http.StatusNotFound, errKeyItemNotFound, err)
+	}
+	if item.Size > services.MaxPreviewProxyBytes {
+		return failResponse(ctx, http.StatusRequestEntityTooLarge, "drive.preview_too_large", nil)
+	}
+
+	stream, item, err := c.service.GetItemStream(context.Background(), user.ID, itemUUID)
+	if err != nil {
+		return failResponse(ctx, http.StatusBadRequest, "drive.preview_failed", err)
+	}
+
+	mimeType := item.MimeType
+	if mimeType == "" {
+		mimeType = "application/octet-stream"
+	}
+
+	ctx.Response().Header("Content-Type", mimeType)
+	ctx.Response().Header("Content-Disposition", "inline")
+	ctx.Response().Header("Accept-Ranges", "bytes")
+	if item.Size > 0 {
+		ctx.Response().Header("Content-Length", strconv.FormatInt(item.Size, 10))
+	}
+
+	return ctx.Response().Stream(http.StatusOK, func(w http.StreamWriter) error {
+		defer stream.Close()
+		_, err := io.Copy(w, stream)
+		return err
+	})
+}
+

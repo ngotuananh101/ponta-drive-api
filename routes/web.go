@@ -15,6 +15,7 @@ const (
 	// items).
 	uuidRoute           = "/{uuid}"
 	uuidBreadcrumbRoute = "/{uuid}/breadcrumb"
+	uuidContentRoute    = "/{uuid}/content"
 	uuidDownloadRoute   = "/{uuid}/download"
 	uuidPreviewRoute    = "/{uuid}/preview"
 	uuidStarRoute       = "/{uuid}/star"
@@ -85,6 +86,7 @@ func Web() {
 					items.Get(uuidBreadcrumbRoute, driveItemController.Breadcrumb)
 					items.Get(uuidDownloadRoute, driveItemController.Download)
 					items.Get(uuidPreviewRoute, driveItemController.Preview)
+					items.Get(uuidContentRoute, driveItemController.Content)
 					items.Patch(uuidRoute, driveItemController.Update)
 					items.Post(uuidStarRoute, driveItemController.Star)
 					items.Delete(uuidRoute, driveItemController.Destroy)
