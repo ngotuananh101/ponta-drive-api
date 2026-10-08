@@ -229,8 +229,10 @@ func (c *CloudAccountController) Store(ctx http.Context) http.Response {
 		account = fresh
 	}
 
-	if err := c.ensureBucketCors(context.Background(), &account); err != nil {
-		facades.Log().Errorf("[CORS] account=%d auto ensure failed: %v", account.ID, err)
+	autoCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := c.ensureBucketCors(autoCtx, &account); err != nil {
+		facades.Log().Errorf("[CORS] auto-configuration for account %d failed: %v", account.ID, err)
 	}
 
 	return ctx.Response().Json(http.StatusCreated, http.Json{
@@ -338,8 +340,10 @@ func (c *CloudAccountController) Update(ctx http.Context) http.Response {
 
 	c.factory.InvalidateCache(account.ID)
 
-	if err := c.ensureBucketCors(context.Background(), account); err != nil {
-		facades.Log().Errorf("[CORS] account=%d auto ensure failed: %v", account.ID, err)
+	autoCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := c.ensureBucketCors(autoCtx, account); err != nil {
+		facades.Log().Errorf("[CORS] auto-configuration for account %d failed: %v", account.ID, err)
 	}
 
 	return ctx.Response().Success().Json(http.Json{

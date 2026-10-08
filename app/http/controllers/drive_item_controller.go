@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -481,6 +482,9 @@ func (c *DriveItemController) Content(ctx http.Context) http.Response {
 	if err != nil {
 		return failResponse(ctx, http.StatusNotFound, errKeyItemNotFound, err)
 	}
+	if item.Type == models.ItemTypeFolder {
+		return failResponse(ctx, http.StatusBadRequest, "drive.preview_failed", errors.New("cannot preview a folder"))
+	}
 	if item.Size > services.MaxPreviewProxyBytes {
 		return failResponse(ctx, http.StatusRequestEntityTooLarge, "drive.preview_too_large", nil)
 	}
@@ -505,8 +509,12 @@ func (c *DriveItemController) Content(ctx http.Context) http.Response {
 		ctx.Response().Header("Content-Type", mimeType)
 		ctx.Response().Header("Content-Disposition", "inline")
 		ctx.Response().Header("Accept-Ranges", "bytes")
+		totalSize := total
+		if totalSize <= 0 {
+			totalSize = item.Size
+		}
 		ctx.Response().Header("Content-Range",
-			fmt.Sprintf("bytes %d-%d/%d", offset, offset+length-1, total))
+			fmt.Sprintf("bytes %d-%d/%d", offset, offset+length-1, totalSize))
 		ctx.Response().Header("Content-Length", strconv.FormatInt(length, 10))
 
 		return ctx.Response().Stream(http.StatusPartialContent, func(w http.StreamWriter) error {
