@@ -320,3 +320,55 @@ func TestS3DriverDeleteObjectsChunking1001Keys(t *testing.T) {
 	assert.Equal(t, int32(2), atomic.LoadInt32(deleteObjectsCalls),
 		"1001 keys with batch size 1000 must produce exactly 2 DeleteObjects calls")
 }
+
+func TestS3DriverGetRange(t *testing.T) {
+	body := []byte("0123456789")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "bytes=2-5", r.Header.Get("Range"))
+		w.Header().Set("Content-Range", "bytes 2-5/10")
+		w.Header().Set("Content-Length", "4")
+		w.WriteHeader(http.StatusPartialContent)
+		_, _ = w.Write(body[2:6])
+	}))
+	defer server.Close()
+
+	driver, err := storage.NewS3Driver(context.Background(), storage.S3Config{
+		Bucket:          "b",
+		Region:          "us-east-1",
+		AccessKeyID:     "k",
+		SecretAccessKey: "s",
+		Endpoint:        server.URL,
+		UsePathStyle:    true,
+	})
+	require.NoError(t, err)
+
+	reader, total, err := driver.GetRange(context.Background(), "key.txt", 2, 4)
+	require.NoError(t, err)
+	defer reader.Close()
+	got, _ := io.ReadAll(reader)
+	assert.Equal(t, "2345", string(got))
+	assert.Equal(t, int64(10), total)
+}
+
+func TestS3DriverGetRangeToEnd(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "bytes=5-", r.Header.Get("Range"))
+		w.Header().Set("Content-Range", "bytes 5-9/10")
+		w.WriteHeader(http.StatusPartialContent)
+		_, _ = w.Write([]byte("56789"))
+	}))
+	defer server.Close()
+
+	driver, err := storage.NewS3Driver(context.Background(), storage.S3Config{
+		Bucket: "b", Region: "us-east-1", AccessKeyID: "k", SecretAccessKey: "s",
+		Endpoint: server.URL, UsePathStyle: true,
+	})
+	require.NoError(t, err)
+
+	reader, total, err := driver.GetRange(context.Background(), "key.txt", 5, -1)
+	require.NoError(t, err)
+	defer reader.Close()
+	got, _ := io.ReadAll(reader)
+	assert.Equal(t, "56789", string(got))
+	assert.Equal(t, int64(10), total)
+}

@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -442,3 +443,108 @@ func (c *DriveItemController) Download(ctx http.Context) http.Response {
 
 	return ctx.Response().Redirect(http.StatusFound, downloadURL)
 }
+
+// Preview resolves how the client should preview an item: a direct URL, a
+// same-origin proxy path, or a download-only fallback.
+func (c *DriveItemController) Preview(ctx http.Context) http.Response {
+	user, itemUUID, errResp := c.resolveUserAndItemUUID(ctx)
+	if errResp != nil {
+		return errResp
+	}
+
+	result, err := c.service.ResolvePreview(context.Background(), user.ID, itemUUID)
+	if err != nil {
+		return failResponse(ctx, http.StatusBadRequest, "drive.preview_failed", err)
+	}
+
+	return ctx.Response().Success().Json(http.Json{
+		"status": "ok",
+		"data": http.Json{
+			"strategy":     string(result.Strategy),
+			"url":          result.URL,
+			"download_url": result.DownloadURL,
+			"item":         result.Item.ToResponse(),
+			"reason":       result.Reason,
+		},
+	})
+}
+
+// Content proxies an item's bytes for preview. It is same-origin, so the
+// browser's CORS rules do not apply, and it enforces the preview size cap
+// server-side rather than trusting the client to have respected it.
+func (c *DriveItemController) Content(ctx http.Context) http.Response {
+	user, itemUUID, errResp := c.resolveUserAndItemUUID(ctx)
+	if errResp != nil {
+		return errResp
+	}
+
+	item, err := c.service.GetItemByUUID(context.Background(), user.ID, itemUUID)
+	if err != nil {
+		return failResponse(ctx, http.StatusNotFound, errKeyItemNotFound, err)
+	}
+	if item.Type == models.ItemTypeFolder {
+		return failResponse(ctx, http.StatusBadRequest, "drive.preview_failed", errors.New("cannot preview a folder"))
+	}
+	if item.Size > services.MaxPreviewProxyBytes {
+		return failResponse(ctx, http.StatusRequestEntityTooLarge, "drive.preview_too_large", nil)
+	}
+
+	rangeHeader := ctx.Request().Header("Range", "")
+	if rangeHeader != "" {
+		offset, length, rerr := services.ParseRangeHeader(rangeHeader, item.Size)
+		if rerr != nil {
+			return failResponse(ctx, http.StatusRequestedRangeNotSatisfiable, "drive.preview_failed", rerr)
+		}
+
+		reader, total, gerr := c.service.GetItemRange(context.Background(), user.ID, itemUUID, offset, length)
+		if gerr != nil {
+			return failResponse(ctx, http.StatusBadRequest, "drive.preview_failed", gerr)
+		}
+
+		mimeType := item.MimeType
+		if mimeType == "" {
+			mimeType = "application/octet-stream"
+		}
+
+		ctx.Response().Header("Content-Type", mimeType)
+		ctx.Response().Header("Content-Disposition", "inline")
+		ctx.Response().Header("Accept-Ranges", "bytes")
+		totalSize := total
+		if totalSize <= 0 {
+			totalSize = item.Size
+		}
+		ctx.Response().Header("Content-Range",
+			fmt.Sprintf("bytes %d-%d/%d", offset, offset+length-1, totalSize))
+		ctx.Response().Header("Content-Length", strconv.FormatInt(length, 10))
+
+		return ctx.Response().Stream(http.StatusPartialContent, func(w http.StreamWriter) error {
+			defer reader.Close()
+			_, err := io.Copy(w, reader)
+			return err
+		})
+	}
+
+	stream, item, err := c.service.GetItemStream(context.Background(), user.ID, itemUUID)
+	if err != nil {
+		return failResponse(ctx, http.StatusBadRequest, "drive.preview_failed", err)
+	}
+
+	mimeType := item.MimeType
+	if mimeType == "" {
+		mimeType = "application/octet-stream"
+	}
+
+	ctx.Response().Header("Content-Type", mimeType)
+	ctx.Response().Header("Content-Disposition", "inline")
+	ctx.Response().Header("Accept-Ranges", "bytes")
+	if item.Size > 0 {
+		ctx.Response().Header("Content-Length", strconv.FormatInt(item.Size, 10))
+	}
+
+	return ctx.Response().Stream(http.StatusOK, func(w http.StreamWriter) error {
+		defer stream.Close()
+		_, err := io.Copy(w, stream)
+		return err
+	})
+}
+

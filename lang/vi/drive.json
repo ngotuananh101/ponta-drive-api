@@ -9,6 +9,9 @@
   "star_failed": "Không thể cập nhật dấu sao. Vui lòng thử lại.",
   "delete_failed": "Không thể xóa mục. Vui lòng thử lại.",
   "download_failed": "Không thể tải xuống mục. Vui lòng thử lại.",
+  "preview_failed": "Không thể mở xem trước cho mục này. Vui lòng thử lại.",
+  "preview_too_large": "Tệp quá lớn để xem trước. Hãy tải xuống để xem.",
+  "preview_unsupported": "Định dạng tệp này không hỗ trợ xem trước. Hãy tải xuống để xem.",
   "invalid_cursor": "Con trỏ phân trang không hợp lệ.",
   "parent_not_found": "Không tìm thấy thư mục cha hoặc bạn không có quyền truy cập."
 }

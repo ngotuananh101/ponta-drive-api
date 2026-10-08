@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"time"
 
@@ -116,6 +117,103 @@ func (d *S3Driver) Get(ctx context.Context, key string) (io.ReadCloser, error) {
 		return nil, err
 	}
 	return output.Body, nil
+}
+
+// GetRange reads a byte range of an object. length < 0 reads to the end.
+func (d *S3Driver) GetRange(ctx context.Context, key string, offset int64, length int64) (io.ReadCloser, int64, error) {
+	var rangeHeader string
+	if length < 0 {
+		rangeHeader = fmt.Sprintf("bytes=%d-", offset)
+	} else {
+		rangeHeader = fmt.Sprintf("bytes=%d-%d", offset, offset+length-1)
+	}
+
+	output, err := d.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(d.bucket),
+		Key:    aws.String(key),
+		Range:  aws.String(rangeHeader),
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+
+	var total int64
+	if output.ContentRange != nil {
+		// Format: "bytes 2-5/10"; the part after "/" is the total size.
+		if _, after, ok := strings.Cut(*output.ContentRange, "/"); ok {
+			if parsed, perr := strconv.ParseInt(strings.TrimSpace(after), 10, 64); perr == nil {
+				total = parsed
+			}
+		}
+	}
+	if total == 0 && output.ContentLength != nil {
+		total = *output.ContentLength
+	}
+
+	return output.Body, total, nil
+}
+
+// GetBucketCors returns the bucket's CORS rules; a missing configuration is an
+// empty list, not an error.
+func (d *S3Driver) GetBucketCors(ctx context.Context) ([]contracts.CORSRule, error) {
+	output, err := d.client.GetBucketCors(ctx, &s3.GetBucketCorsInput{
+		Bucket: aws.String(d.bucket),
+	})
+	if err != nil {
+		var apiErr smithy.APIError
+		if errors.As(err, &apiErr) && apiErr.ErrorCode() == "NoSuchCORSConfiguration" {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	rules := make([]contracts.CORSRule, 0, len(output.CORSRules))
+	for _, r := range output.CORSRules {
+		rule := contracts.CORSRule{
+			AllowedOrigins: r.AllowedOrigins,
+			AllowedMethods: r.AllowedMethods,
+			AllowedHeaders: r.AllowedHeaders,
+			ExposeHeaders:  r.ExposeHeaders,
+		}
+		if r.ID != nil {
+			rule.ID = *r.ID
+		}
+		if r.MaxAgeSeconds != nil {
+			rule.MaxAgeSeconds = *r.MaxAgeSeconds
+		}
+		rules = append(rules, rule)
+	}
+	return rules, nil
+}
+
+// PutBucketCors replaces the bucket's entire CORS configuration.
+func (d *S3Driver) PutBucketCors(ctx context.Context, rules []contracts.CORSRule) error {
+	awsRules := make([]types.CORSRule, 0, len(rules))
+	for _, r := range rules {
+		awsRule := types.CORSRule{
+			AllowedOrigins: r.AllowedOrigins,
+			AllowedMethods: r.AllowedMethods,
+			AllowedHeaders: r.AllowedHeaders,
+			ExposeHeaders:  r.ExposeHeaders,
+		}
+		if r.ID != "" {
+			id := r.ID
+			awsRule.ID = &id
+		}
+		if r.MaxAgeSeconds > 0 {
+			age := r.MaxAgeSeconds
+			awsRule.MaxAgeSeconds = &age
+		}
+		awsRules = append(awsRules, awsRule)
+	}
+
+	_, err := d.client.PutBucketCors(ctx, &s3.PutBucketCorsInput{
+		Bucket: aws.String(d.bucket),
+		CORSConfiguration: &types.CORSConfiguration{
+			CORSRules: awsRules,
+		},
+	})
+	return err
 }
 
 // Delete deletes an object from S3.

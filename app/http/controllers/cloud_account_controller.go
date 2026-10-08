@@ -229,6 +229,12 @@ func (c *CloudAccountController) Store(ctx http.Context) http.Response {
 		account = fresh
 	}
 
+	autoCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := c.ensureBucketCors(autoCtx, &account); err != nil {
+		facades.Log().Errorf("[CORS] auto-configuration for account %d failed: %v", account.ID, err)
+	}
+
 	return ctx.Response().Json(http.StatusCreated, http.Json{
 		"status": "ok",
 		"data":   account.ToResponse(),
@@ -334,6 +340,12 @@ func (c *CloudAccountController) Update(ctx http.Context) http.Response {
 
 	c.factory.InvalidateCache(account.ID)
 
+	autoCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := c.ensureBucketCors(autoCtx, account); err != nil {
+		facades.Log().Errorf("[CORS] auto-configuration for account %d failed: %v", account.ID, err)
+	}
+
 	return ctx.Response().Success().Json(http.Json{
 		"status": "ok",
 		"data":   account.ToResponse(),
@@ -395,3 +407,51 @@ func (c *CloudAccountController) Sync(ctx http.Context) http.Response {
 		"message": facades.Lang(ctx).Get("cloud.sync_started"),
 	})
 }
+
+// Cors applies the preview CORS rule to an account's bucket on demand, for when
+// the automatic step could not run (for example, insufficient permissions).
+func (c *CloudAccountController) Cors(ctx http.Context) http.Response {
+	user, ok := ctx.Value("user").(models.User)
+	if !ok || user.ID == 0 {
+		return failResponse(ctx, http.StatusUnauthorized, "common.unauthorized", nil)
+	}
+
+	account, errResp := c.findAccountByID(ctx, user.ID)
+	if errResp != nil {
+		return errResp
+	}
+
+	ensureCtx, cancel := context.WithTimeout(ctx.Context(), 15*time.Second)
+	defer cancel()
+
+	if err := c.ensureBucketCors(ensureCtx, account); err != nil {
+		return failResponse(ctx, http.StatusBadRequest, "cloud.cors_failed", err)
+	}
+
+	return ctx.Response().Success().Json(http.Json{
+		"status":  "ok",
+		"message": facades.Lang(ctx).Get("cloud.cors_enabled"),
+	})
+}
+
+func (c *CloudAccountController) ensureBucketCors(ctx context.Context, account *models.CloudAccount) error {
+	origin := facades.Config().GetString("app.frontend_url", "http://localhost:5173")
+
+	driver, err := c.factory.DriverForAccount(ctx, account)
+	if err != nil {
+		return fmt.Errorf("driver init: %w", err)
+	}
+	existing, err := driver.GetBucketCors(ctx)
+	if err != nil {
+		return fmt.Errorf("get cors: %w", err)
+	}
+	merged, changed := services.MergeCorsRules(existing, origin)
+	if !changed {
+		return nil
+	}
+	if err := driver.PutBucketCors(ctx, merged); err != nil {
+		return fmt.Errorf("put cors: %w", err)
+	}
+	return nil
+}
+
