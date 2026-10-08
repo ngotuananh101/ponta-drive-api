@@ -485,6 +485,37 @@ func (c *DriveItemController) Content(ctx http.Context) http.Response {
 		return failResponse(ctx, http.StatusRequestEntityTooLarge, "drive.preview_too_large", nil)
 	}
 
+	rangeHeader := ctx.Request().Header("Range", "")
+	if rangeHeader != "" {
+		offset, length, rerr := services.ParseRangeHeader(rangeHeader, item.Size)
+		if rerr != nil {
+			return failResponse(ctx, http.StatusRequestedRangeNotSatisfiable, "drive.preview_failed", rerr)
+		}
+
+		reader, total, gerr := c.service.GetItemRange(context.Background(), user.ID, itemUUID, offset, length)
+		if gerr != nil {
+			return failResponse(ctx, http.StatusBadRequest, "drive.preview_failed", gerr)
+		}
+
+		mimeType := item.MimeType
+		if mimeType == "" {
+			mimeType = "application/octet-stream"
+		}
+
+		ctx.Response().Header("Content-Type", mimeType)
+		ctx.Response().Header("Content-Disposition", "inline")
+		ctx.Response().Header("Accept-Ranges", "bytes")
+		ctx.Response().Header("Content-Range",
+			fmt.Sprintf("bytes %d-%d/%d", offset, offset+length-1, total))
+		ctx.Response().Header("Content-Length", strconv.FormatInt(length, 10))
+
+		return ctx.Response().Stream(http.StatusPartialContent, func(w http.StreamWriter) error {
+			defer reader.Close()
+			_, err := io.Copy(w, reader)
+			return err
+		})
+	}
+
 	stream, item, err := c.service.GetItemStream(context.Background(), user.ID, itemUUID)
 	if err != nil {
 		return failResponse(ctx, http.StatusBadRequest, "drive.preview_failed", err)

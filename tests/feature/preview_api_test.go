@@ -169,3 +169,22 @@ func (s *PreviewAPITestSuite) TestContentRejectsOverCap() {
 	s.Require().NoError(err)
 	resp.AssertStatus(http.StatusRequestEntityTooLarge)
 }
+
+func (s *PreviewAPITestSuite) TestContentServesRange() {
+	// s.item.Size is 10 (see SetupTest), so bytes=2-5 is satisfiable.
+	req := s.Http(s.T()).WithToken(s.token).WithHeader("Range", "bytes=2-5")
+	resp, err := req.Get(fmt.Sprintf("/v1/drive/items/%s/content", s.item.UUID))
+	s.Require().NoError(err)
+	resp.AssertStatus(http.StatusPartialContent)
+	s.Equal("bytes 2-5/10", resp.Headers().Get("Content-Range"))
+	content, _ := resp.Content()
+	s.Equal("2345", content)
+}
+
+func (s *PreviewAPITestSuite) TestContentRejectsBadRange() {
+	req := s.Http(s.T()).WithToken(s.token).WithHeader("Range", "bytes=200-300")
+	resp, err := req.Get(fmt.Sprintf("/v1/drive/items/%s/content", s.item.UUID))
+	s.Require().NoError(err)
+	resp.AssertStatus(http.StatusRequestedRangeNotSatisfiable)
+}
+

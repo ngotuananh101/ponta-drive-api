@@ -827,6 +827,24 @@ func (s *CloudDriveService) GetItemStream(ctx context.Context, userID uint, item
 	return body, item, nil
 }
 
+// GetItemRange returns a byte range of an item's object plus its total size.
+func (s *CloudDriveService) GetItemRange(ctx context.Context, userID uint, itemUUID string, offset int64, length int64) (io.ReadCloser, int64, error) {
+	item, err := s.GetItemByUUID(ctx, userID, itemUUID)
+	if err != nil {
+		return nil, 0, err
+	}
+	if item.Type == models.ItemTypeFolder {
+		return nil, 0, errors.New("cannot read a folder")
+	}
+
+	driver, _, err := s.GetDriver(ctx, userID, item.CloudAccountID)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return driver.GetRange(ctx, item.StoragePath, offset, length)
+}
+
 // ScanBucket recursively scans an S3 bucket and synchronizes its objects into virtual DriveItem folders and files.
 func (s *CloudDriveService) ScanBucket(ctx context.Context, userID uint, cloudAccountID uint, parentID *uint) (int, error) {
 	driver, account, err := s.GetDriver(ctx, userID, cloudAccountID)
