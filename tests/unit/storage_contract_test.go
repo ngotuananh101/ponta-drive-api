@@ -30,3 +30,12 @@ func (s *s3DriverStub) CompleteMultipart(ctx context.Context, key string, upload
 func (s *s3DriverStub) AbortMultipart(ctx context.Context, key string, uploadID string) error { return nil }
 func (s *s3DriverStub) ListObjects(ctx context.Context, prefix string, continuationToken string, maxKeys int32) (*contracts.ListObjectsResult, error) { return nil, nil }
 func (s *s3DriverStub) DeleteObjects(ctx context.Context, keys []string) error { return nil }
+func (s *s3DriverStub) GetBucketCors(ctx context.Context) ([]contracts.CORSRule, error) {
+	return nil, nil
+}
+func (s *s3DriverStub) PutBucketCors(ctx context.Context, rules []contracts.CORSRule) error {
+	return nil
+}
+func (s *s3DriverStub) GetRange(ctx context.Context, key string, offset int64, length int64) (io.ReadCloser, int64, error) {
+	return nil, 0, nil
+}

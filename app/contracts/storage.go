@@ -34,6 +34,16 @@ type ListObjectsResult struct {
 	IsTruncated      bool
 }
 
+// CORSRule is a framework-agnostic representation of one bucket CORS rule.
+type CORSRule struct {
+	ID             string
+	AllowedOrigins []string
+	AllowedMethods []string
+	AllowedHeaders []string
+	ExposeHeaders  []string
+	MaxAgeSeconds  int32
+}
+
 type CloudDriver interface {
 	Put(ctx context.Context, key string, reader io.Reader, size int64, mimeType string) error
 	Get(ctx context.Context, key string) (io.ReadCloser, error)
@@ -48,4 +58,10 @@ type CloudDriver interface {
 	AbortMultipart(ctx context.Context, key string, uploadID string) error
 	ListObjects(ctx context.Context, prefix string, continuationToken string, maxKeys int32) (*ListObjectsResult, error)
 	DeleteObjects(ctx context.Context, keys []string) error
+	GetBucketCors(ctx context.Context) ([]CORSRule, error)
+	PutBucketCors(ctx context.Context, rules []CORSRule) error
+	// GetRange reads [offset, offset+length) of an object; length < 0 reads to
+	// the end. It returns the object's total size so callers can build a
+	// Content-Range header.
+	GetRange(ctx context.Context, key string, offset int64, length int64) (io.ReadCloser, int64, error)
 }
