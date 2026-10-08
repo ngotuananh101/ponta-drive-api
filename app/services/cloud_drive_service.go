@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"path/filepath"
 	"strings"
 	"time"
@@ -1015,4 +1016,107 @@ func (s *CloudDriveService) ScanBucket(ctx context.Context, userID uint, cloudAc
 	}
 
 	return syncedCount, nil
+}
+
+// PreviewResult is the resolved way to preview one file.
+type PreviewResult struct {
+	Strategy    PreviewStrategy
+	URL         string
+	DownloadURL string
+	Item        *models.DriveItem
+	Reason      string
+}
+
+// publicURLTimeout bounds the server-side reachability probe so a slow or
+// black-holed CDN cannot hold the request open.
+const publicURLTimeout = 3 * time.Second
+
+// PublicURLReachable reports whether an absolute public URL answers a HEAD
+// request with 2xx/3xx. It is deliberately done server-side: a browser check
+// would be a CORS false-negative for a URL that is in fact public.
+func PublicURLReachable(ctx context.Context, rawURL string) bool {
+	if !strings.HasPrefix(rawURL, "http://") && !strings.HasPrefix(rawURL, "https://") {
+		return false
+	}
+
+	probeCtx, cancel := context.WithTimeout(ctx, publicURLTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(probeCtx, http.MethodHead, rawURL, nil)
+	if err != nil {
+		return false
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	return resp.StatusCode >= 200 && resp.StatusCode < 400
+}
+
+// publicURLFor joins an account's configured public URL with an object key.
+// Returns "" when no public URL is configured.
+func publicURLFor(publicBase string, storagePath string) string {
+	base := strings.TrimRight(strings.TrimSpace(publicBase), "/")
+	key := strings.TrimLeft(strings.TrimSpace(storagePath), "/")
+	if base == "" || key == "" {
+		return ""
+	}
+	return base + "/" + key
+}
+
+// ResolvePreview decides how to preview an item. It never proxies on its own;
+// it only reports the strategy, the URL to use and the always-available
+// download URL.
+func (s *CloudDriveService) ResolvePreview(ctx context.Context, userID uint, itemUUID string) (*PreviewResult, error) {
+	item, err := s.GetItemByUUID(ctx, userID, itemUUID)
+	if err != nil {
+		return nil, err
+	}
+	if item.Type == models.ItemTypeFolder {
+		return nil, errors.New("cannot preview a folder")
+	}
+
+	driver, _, err := s.GetDriver(ctx, userID, item.CloudAccountID)
+	if err != nil {
+		return nil, err
+	}
+
+	downloadURL, _, err := s.GetPresignedDownloadURL(ctx, userID, itemUUID, 15*time.Minute)
+	if err != nil {
+		return nil, err
+	}
+
+	kind := ClassifyPreviewKind(item.MimeType, item.Extension)
+
+	publicURL := ""
+	if pub := driver.GetPublicURL(); pub != "" {
+		publicURL = publicURLFor(pub, item.StoragePath)
+	}
+	reachable := publicURL != "" && PublicURLReachable(ctx, publicURL)
+
+	strategy, reason := DecidePreviewStrategy(kind, item.Size, reachable)
+
+	result := &PreviewResult{
+		Strategy:    strategy,
+		DownloadURL: downloadURL,
+		Item:        item,
+		Reason:      reason,
+	}
+
+	switch strategy {
+	case StrategyDirect:
+		if reachable {
+			result.URL = publicURL
+		} else {
+			result.URL = downloadURL
+		}
+	case StrategyProxy:
+		result.URL = fmt.Sprintf("/v1/drive/items/%s/content", item.UUID)
+	default:
+		result.URL = ""
+	}
+
+	return result, nil
 }

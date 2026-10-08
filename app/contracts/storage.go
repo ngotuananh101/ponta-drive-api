@@ -64,4 +64,7 @@ type CloudDriver interface {
 	// the end. It returns the object's total size so callers can build a
 	// Content-Range header.
 	GetRange(ctx context.Context, key string, offset int64, length int64) (io.ReadCloser, int64, error)
+	// GetPublicURL returns the optional public CDN/custom domain for the bucket,
+	// or "" when none is configured.
+	GetPublicURL() string
 }

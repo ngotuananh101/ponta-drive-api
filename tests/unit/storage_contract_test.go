@@ -39,3 +39,4 @@ func (s *s3DriverStub) PutBucketCors(ctx context.Context, rules []contracts.CORS
 func (s *s3DriverStub) GetRange(ctx context.Context, key string, offset int64, length int64) (io.ReadCloser, int64, error) {
 	return nil, 0, nil
 }
+func (s *s3DriverStub) GetPublicURL() string { return "" }
