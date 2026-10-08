@@ -9,5 +9,7 @@
   "update_failed": "Failed to update cloud account",
   "delete_failed": "Failed to delete cloud account",
   "deleted": "Cloud account deleted successfully",
-  "sync_started": "Bucket synchronization initiated"
+  "sync_started": "Bucket synchronization initiated",
+  "cors_enabled": "Preview access enabled for this bucket.",
+  "cors_failed": "Could not enable preview access. Check the storage key permissions."
 }

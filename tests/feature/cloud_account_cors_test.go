@@ -3,6 +3,7 @@ package feature
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -70,4 +71,34 @@ func (s *CloudCorsTestSuite) TestCreateAccountSucceedsWhenCorsIsDenied() {
 	resp, err := s.Http(s.T()).WithToken(s.token).Post("/v1/cloud-accounts", bytes.NewBuffer(payload))
 	s.Require().NoError(err)
 	resp.AssertStatus(http.StatusCreated)
+}
+
+func (s *CloudCorsTestSuite) TestManualCorsSucceedsWhenSupported() {
+	var putCalled bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte(`<Error><Code>NoSuchCORSConfiguration</Code></Error>`))
+			return
+		}
+		putCalled = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	account := models.CloudAccount{
+		UserID: s.user.ID, Name: "CORS ok", Provider: models.ProviderMinIO,
+		IsDefault: true, IsActive: true,
+	}
+	_ = account.SetCredentials(&models.S3Credentials{
+		Endpoint: server.URL, Bucket: "b", Region: "us-east-1",
+		AccessKeyID: "k", SecretAccessKey: "s", UsePathStyle: true,
+	})
+	s.Require().NoError(facades.Orm().Query().Create(&account))
+
+	resp, err := s.Http(s.T()).WithToken(s.token).Post(
+		fmt.Sprintf("/v1/cloud-accounts/%d/cors", account.ID), nil)
+	s.Require().NoError(err)
+	resp.AssertOk()
+	s.True(putCalled)
 }

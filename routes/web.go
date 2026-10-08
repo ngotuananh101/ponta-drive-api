@@ -76,6 +76,7 @@ func Web() {
 				ca.Put(idRoute, cloudAccountController.Update)
 				ca.Delete(idRoute, cloudAccountController.Destroy)
 				ca.Post(idSyncRoute, cloudAccountController.Sync)
+				ca.Post("/{id}/cors", cloudAccountController.Cors)
 			})
 
 			v1.Prefix("drive").Group(func(drive route.Router) {

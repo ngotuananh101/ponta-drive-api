@@ -9,5 +9,7 @@
   "update_failed": "Không thể cập nhật tài khoản đám mây",
   "delete_failed": "Không thể xóa tài khoản đám mây",
   "deleted": "Tài khoản đám mây đã được xóa thành công",
-  "sync_started": "Đã bắt đầu tiến trình đồng bộ hóa thùng lưu trữ"
+  "sync_started": "Đã bắt đầu tiến trình đồng bộ hóa thùng lưu trữ",
+  "cors_enabled": "Đã bật quyền xem trước cho bucket này.",
+  "cors_failed": "Không thể bật quyền xem trước. Hãy kiểm tra quyền của khóa lưu trữ."
 }
