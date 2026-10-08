@@ -16,6 +16,7 @@ const (
 	uuidRoute           = "/{uuid}"
 	uuidBreadcrumbRoute = "/{uuid}/breadcrumb"
 	uuidDownloadRoute   = "/{uuid}/download"
+	uuidPreviewRoute    = "/{uuid}/preview"
 	uuidStarRoute       = "/{uuid}/star"
 	// idRoute identifies cloud accounts, whose public identifier is the numeric
 	// account id.
@@ -83,6 +84,7 @@ func Web() {
 					items.Get(uuidRoute, driveItemController.Show)
 					items.Get(uuidBreadcrumbRoute, driveItemController.Breadcrumb)
 					items.Get(uuidDownloadRoute, driveItemController.Download)
+					items.Get(uuidPreviewRoute, driveItemController.Preview)
 					items.Patch(uuidRoute, driveItemController.Update)
 					items.Post(uuidStarRoute, driveItemController.Star)
 					items.Delete(uuidRoute, driveItemController.Destroy)

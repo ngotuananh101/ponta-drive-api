@@ -9,6 +9,9 @@
   "star_failed": "Could not update the star. Please try again.",
   "delete_failed": "Could not delete the item. Please try again.",
   "download_failed": "Could not download the item. Please try again.",
+  "preview_failed": "Could not open a preview for this item. Please try again.",
+  "preview_too_large": "This file is too large to preview. Download it to view it.",
+  "preview_unsupported": "This file type cannot be previewed. Download it to view it.",
   "invalid_cursor": "The pagination cursor is invalid.",
   "parent_not_found": "Parent folder not found or access denied."
 }

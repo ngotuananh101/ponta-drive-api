@@ -442,3 +442,29 @@ func (c *DriveItemController) Download(ctx http.Context) http.Response {
 
 	return ctx.Response().Redirect(http.StatusFound, downloadURL)
 }
+
+// Preview resolves how the client should preview an item: a direct URL, a
+// same-origin proxy path, or a download-only fallback.
+func (c *DriveItemController) Preview(ctx http.Context) http.Response {
+	user, itemUUID, errResp := c.resolveUserAndItemUUID(ctx)
+	if errResp != nil {
+		return errResp
+	}
+
+	result, err := c.service.ResolvePreview(context.Background(), user.ID, itemUUID)
+	if err != nil {
+		return failResponse(ctx, http.StatusBadRequest, "drive.preview_failed", err)
+	}
+
+	return ctx.Response().Success().Json(http.Json{
+		"status": "ok",
+		"data": http.Json{
+			"strategy":     string(result.Strategy),
+			"url":          result.URL,
+			"download_url": result.DownloadURL,
+			"item":         result.Item.ToResponse(),
+			"reason":       result.Reason,
+		},
+	})
+}
+
