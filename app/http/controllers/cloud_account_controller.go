@@ -229,6 +229,8 @@ func (c *CloudAccountController) Store(ctx http.Context) http.Response {
 		account = fresh
 	}
 
+	c.ensureBucketCors(context.Background(), &account)
+
 	return ctx.Response().Json(http.StatusCreated, http.Json{
 		"status": "ok",
 		"data":   account.ToResponse(),
@@ -334,6 +336,8 @@ func (c *CloudAccountController) Update(ctx http.Context) http.Response {
 
 	c.factory.InvalidateCache(account.ID)
 
+	c.ensureBucketCors(context.Background(), account)
+
 	return ctx.Response().Success().Json(http.Json{
 		"status": "ok",
 		"data":   account.ToResponse(),
@@ -395,3 +399,32 @@ func (c *CloudAccountController) Sync(ctx http.Context) http.Response {
 		"message": facades.Lang(ctx).Get("cloud.sync_started"),
 	})
 }
+
+// ensureBucketCors makes the bucket allow the frontend origin to GET/HEAD, so
+// previews can read CORS-requiring file types directly instead of through the
+// proxy. It is best-effort: a key without s3:PutBucketCors (very common) must
+// not fail the account save, so every error is logged and swallowed.
+func (c *CloudAccountController) ensureBucketCors(ctx context.Context, account *models.CloudAccount) {
+	origin := facades.Config().GetString("app.frontend_url", "http://localhost:5173")
+
+	driver, err := c.factory.DriverForAccount(ctx, account)
+	if err != nil {
+		facades.Log().Errorf("[CORS] account=%d driver init failed: %v", account.ID, err)
+		return
+	}
+
+	existing, err := driver.GetBucketCors(ctx)
+	if err != nil {
+		facades.Log().Errorf("[CORS] account=%d get failed: %v", account.ID, err)
+		return
+	}
+
+	merged, changed := services.MergeCorsRules(existing, origin)
+	if !changed {
+		return
+	}
+	if err := driver.PutBucketCors(ctx, merged); err != nil {
+		facades.Log().Errorf("[CORS] account=%d put failed: %v", account.ID, err)
+	}
+}
+
